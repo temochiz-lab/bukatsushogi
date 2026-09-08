@@ -19,9 +19,12 @@
           <select id="schoolSelect"></select>
         </label>
         <button id="spectatorButton" type="button">観戦モード</button>
+        <button id="deckButton" type="button" hidden>編成</button>
         <button id="restartButton" type="button">再戦</button>
       </div>
     </section>
+
+    <section id="deckSetup" class="deck-setup" aria-label="デッキ編成"></section>
 
     <section class="play-area">
       <aside class="panel" aria-label="選択中の駒">
@@ -43,13 +46,17 @@
           <span class="move-trail-line"></span>
         </div>
         <div id="checkBanner" class="check-banner" aria-live="assertive"></div>
+        <div id="resultDialog" class="result-dialog" role="dialog" aria-modal="true" aria-labelledby="resultTitle" hidden>
+          <h2 id="resultTitle">勝利</h2>
+          <p id="resultMessage">対局が終了しました。</p>
+          <div class="result-actions">
+            <button type="button" data-result-action="new">新規</button>
+            <button type="button" data-result-action="replay">棋譜再現</button>
+          </div>
+        </div>
       </div>
 
-      <aside class="panel legend" aria-label="地形">
-        <h2>地形</h2>
-        <div id="terrainLegend"></div>
-        <h2>駒</h2>
-        <div id="clubLegend"></div>
+      <aside class="panel legend" aria-label="部活"><div id="clubLegend"></div>
       </aside>
     </section>
   </main>

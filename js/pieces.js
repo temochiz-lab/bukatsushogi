@@ -5,40 +5,116 @@
     return { id, team, club, row, col, promoted: false, status: [] };
   }
 
-  function createInitialPieces() {
-    const pieces = [];
-    const homeCols = [0, 1, 2, 3, 4, 5, 6, 7, 8];
-    const backLine = [
-      ["chemistry", 0],
-      ["swim", 1],
-      ["judo", 2],
-      ["kendo", 3],
-      ["president", 4],
-      ["kendo", 5],
-      ["judo", 6],
-      ["swim", 7],
-      ["chemistry", 8]
-    ];
+  const homeCols = [0, 1, 2, 3, 4, 5, 6, 7, 8];
+  const playerBackCols = [0, 1, 2, 3, 5, 6, 7, 8];
+  const playerMiddleCols = [1, 4, 7];
+  const playerFixedBackLine = [["president", 4]];
+  const playerDeckSlots = playerBackCols.map((col) => ({ line: "backLine", row: 8, col }))
+    .concat(playerMiddleCols.map((col) => ({ line: "middleLine", row: 7, col })));
 
+  const playerBackLine = [
+    ["swim", 0],
+    ["chemistry", 1],
+    ["judo", 2],
+    ["kendo", 3],
+    ["president", 4],
+    ["kendo", 5],
+    ["judo", 6],
+    ["chemistry", 7],
+    ["swim", 8]
+  ];
+  const playerMiddleLine = [
+    ["track", 1],
+    ["rugby", 4],
+    ["archery", 7]
+  ];
+
+  const cpuLineups = {
+    normal: {
+      backLine: playerBackLine,
+      middleLine: [["archery", 1], ["rugby", 4], ["track", 7]]
+    },
+    gifted: {
+      backLine: [["pc", 0], ["physics", 1], ["chemistry", 2], ["art", 3], ["president", 4], ["art", 5], ["chemistry", 6], ["physics", 7], ["pc", 8]],
+      middleLine: [["basketball", 1], ["baseball", 4], ["volleyball", 7]]
+    },
+    imperial: {
+      backLine: [["broadcast", 0], ["newspaper", 1], ["art", 2], ["drama", 3], ["president", 4], ["drama", 5], ["art", 6], ["newspaper", 7], ["broadcast", 8]],
+      middleLine: [["pc", 1], ["archery", 4], ["nurse", 7]]
+    },
+    science: {
+      backLine: [["physics", 0], ["chemistry", 1], ["pc", 2], ["archery", 3], ["president", 4], ["archery", 5], ["pc", 6], ["chemistry", 7], ["physics", 8]],
+      middleLine: [["nurse", 1], ["chemistry", 4], ["art", 7]]
+    },
+    cruel: {
+      backLine: [["volleyball", 0], ["swim", 1], ["judo", 2], ["kendo", 3], ["president", 4], ["kendo", 5], ["basketball", 6], ["soccer", 7], ["volleyball", 8]],
+      middleLine: [["track", 1], ["rugby", 4], ["baseball", 7]]
+    }
+  };
+
+  function shuffle(items) {
+    const next = [...items];
+    for (let index = next.length - 1; index > 0; index -= 1) {
+      const swapIndex = Math.floor(Math.random() * (index + 1));
+      [next[index], next[swapIndex]] = [next[swapIndex], next[index]];
+    }
+    return next;
+  }
+
+  function playableClubKeys() {
+    return Object.keys(global.BukatsuConfig.CLUBS).filter((club) => club !== "home" && club !== "president");
+  }
+
+  function lineupFromClubKeys(clubKeys) {
+    return {
+      backLine: playerFixedBackLine.concat(playerBackCols.map((col, index) => [clubKeys[index], col])),
+      middleLine: playerMiddleCols.map((col, index) => [clubKeys[playerBackCols.length + index], col])
+    };
+  }
+
+  function randomPlayerLineup() {
+    return lineupFromClubKeys(shuffle(playableClubKeys()).slice(0, playerDeckSlots.length));
+  }
+
+  function normalizePlayerLineup(playerLineup) {
+    if (!playerLineup || !Array.isArray(playerLineup.backLine) || !Array.isArray(playerLineup.middleLine)) {
+      return randomPlayerLineup();
+    }
+    return {
+      backLine: playerFixedBackLine.concat(playerLineup.backLine.filter(([club]) => club !== "president")),
+      middleLine: playerLineup.middleLine
+    };
+  }
+
+  function addTeam(pieces, team, homeRow, middleRow, backRow, middleLine, backLine) {
     for (const col of homeCols) {
-      pieces.push(createPiece(`blue-home-${col}`, "blue", "home", 6, col));
-      pieces.push(createPiece(`red-home-${col}`, "red", "home", 2, col));
+      pieces.push(createPiece(`${team}-home-${col}`, team, "home", homeRow, col));
     }
 
-    pieces.push(createPiece("blue-track-1", "blue", "track", 7, 1));
-    pieces.push(createPiece("blue-rugby-1", "blue", "rugby", 7, 4));
-    pieces.push(createPiece("blue-archery-1", "blue", "archery", 7, 7));
-    pieces.push(createPiece("red-archery-1", "red", "archery", 1, 1));
-    pieces.push(createPiece("red-rugby-1", "red", "rugby", 1, 4));
-    pieces.push(createPiece("red-track-1", "red", "track", 1, 7));
+    for (const [club, col] of middleLine) {
+      pieces.push(createPiece(`${team}-${club}-middle-${col}`, team, club, middleRow, col));
+    }
 
     for (const [club, col] of backLine) {
-      pieces.push(createPiece(`blue-${club}-${col}`, "blue", club, 8, col));
-      pieces.push(createPiece(`red-${club}-${col}`, "red", club, 0, col));
+      pieces.push(createPiece(`${team}-${club}-back-${col}`, team, club, backRow, col));
     }
+  }
 
+  function createInitialPieces(cpuSchoolKey, playerLineup) {
+    const pieces = [];
+    const cpuLineup = cpuLineups[cpuSchoolKey] || cpuLineups.normal;
+    const blueLineup = normalizePlayerLineup(playerLineup);
+    addTeam(pieces, "blue", 6, 7, 8, blueLineup.middleLine, blueLineup.backLine);
+    addTeam(pieces, "red", 2, 1, 0, cpuLineup.middleLine, cpuLineup.backLine);
     return pieces;
   }
 
-  global.BukatsuPieces = { createInitialPieces };
+  global.BukatsuPieces = {
+    createInitialPieces,
+    cpuLineups,
+    playerDeckSlots,
+    playableClubKeys,
+    lineupFromClubKeys,
+    randomPlayerLineup
+  };
 })(globalThis);
