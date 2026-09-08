@@ -677,9 +677,10 @@ const clubEntries = Object.entries(CLUBS).concat([["promotedHome", { name: "成�
 
     if (hiddenCheckSide === checkedSide) return;
 
+    const checkingSide = checkedSide === "blue" ? "red" : "blue";
     checkBanner.textContent = "王手";
     checkBanner.classList.remove("blue", "red");
-    checkBanner.classList.add("visible", checkedSide);
+    checkBanner.classList.add("visible", checkingSide);
 
     if (visibleCheckSide !== checkedSide) {
       visibleCheckSide = checkedSide;
