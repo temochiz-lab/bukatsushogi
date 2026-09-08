@@ -17,6 +17,8 @@
   const turnStat = document.getElementById("turnStat");
   const blueCaptured = document.getElementById("blueCaptured");
   const redCaptured = document.getElementById("redCaptured");
+  const blueCapturedTray = document.getElementById("blueCapturedTray");
+  const redCapturedTray = document.getElementById("redCapturedTray");
   const moveHistory = document.getElementById("moveHistory");
   const spectatorButton = document.getElementById("spectatorButton");
   const restartButton = document.getElementById("restartButton");
@@ -46,7 +48,6 @@
   let visibleCheckSide = null;
   let hiddenCheckSide = null;
   let checkTimerId = null;
-  let startSoundPlayed = false;
   let winnerSoundPlayedFor = null;
   let resultDialogShownFor = null;
   let replayTimerId = null;
@@ -76,12 +77,6 @@
     if (playPromise && typeof playPromise.catch === "function") {
       playPromise.catch(() => {});
     }
-  }
-
-  function playStartSound() {
-    if (startSoundPlayed) return;
-    startSoundPlayed = true;
-    playSound("start");
   }
 
   function playMoveSound(move, winner) {
@@ -123,7 +118,7 @@
   function actionLabel(move) {
     if (move.convert) return "勧誘";
     if (move.type === "attack") return "射撃";
-    if (move.type === "special") return "妨害";
+    if (move.type === "drop") return "打つ";
     return move.captureId ? "捕獲" : "移動";
   }
 
@@ -206,7 +201,7 @@
     resetGameForDeck();
     renderDeckSetup();
     render();
-    playStartSound();
+    playSound("start");
     if (spectatorMode) scheduleSpectatorTurn(260);
   }
 
@@ -468,19 +463,11 @@ const clubEntries = Object.entries(CLUBS);
 
       const legal = selectedMoves.find((move) => move.to.row === cell.row && move.to.col === cell.col);
       if (legal) {
-        cellEl.classList.add(legal.type === "special" ? "legal-special" : legal.captureId || legal.type === "attack" ? "legal-attack" : "legal-move");
+        cellEl.classList.add(legal.captureId || legal.type === "attack" ? "legal-attack" : "legal-move");
       }
       if (selectedPieceId) {
         const selected = Rules.getPiece(state, selectedPieceId);
-        if (selected && selected.row === cell.row && selected.col === cell.col) cellEl.classList.add("selected");
-      }
-
-      const hazard = state.hazards.find((item) => item.row === cell.row && item.col === cell.col);
-      if (hazard) {
-        const marker = document.createElement("span");
-        marker.className = "hazard-marker";
-        marker.textContent = hazard.kind === "decoy" ? "偽" : "×";
-        cellEl.appendChild(marker);
+        if (selected && !selected.captured && selected.row === cell.row && selected.col === cell.col) cellEl.classList.add("selected");
       }
 
       const piece = Rules.pieceAt(state, cell.row, cell.col);
@@ -489,7 +476,9 @@ const clubEntries = Object.entries(CLUBS);
         const originalTeam = piece.originalTeam || piece.team;
         pieceEl.className = `piece color-${originalTeam} facing-${piece.team}${piece.promoted ? " promoted" : ""}`;
         pieceEl.title = `${Game.sideName(piece.team)} ${clubName(piece)}`;
-        pieceEl.innerHTML = `<span class="piece-icon" aria-hidden="true">${CLUBS[piece.club].icon}</span><small>${clubShortName(piece)}</small>`;
+        const shortName = clubShortName(piece);
+        const compactClass = [...shortName].length > 1 ? " class=\"compact\"" : "";
+        pieceEl.innerHTML = `<span class="piece-icon" aria-hidden="true">${CLUBS[piece.club].icon}</span><small${compactClass}>${shortName}</small>`;
         cellEl.appendChild(pieceEl);
       }
 
@@ -523,10 +512,29 @@ const clubEntries = Object.entries(CLUBS);
     redCaptured.textContent = String(state.captured.red.length);
   }
 
+  function renderCapturedTrays() {
+    const renderTray = (element, side, label) => {
+      const pieces = state.captured[side]
+        .map((pieceId) => Rules.getPiece(state, pieceId))
+        .filter(Boolean)
+        .reverse();
+      const selectable = side === "blue" && setupComplete && state.turn === "blue" && !cpuBusy && !spectatorMode && !Rules.isFinished(state);
+      element.innerHTML = `<strong>${label}</strong><div class="captured-piece-list">${pieces.map((piece) => (
+        `<button type="button" class="captured-piece ${side}${selectedPieceId === piece.id ? " selected" : ""}" data-captured-piece-id="${piece.id}" title="${clubName(piece)}を打つ" ${selectable ? "" : "disabled"}><span aria-hidden="true">${CLUBS[piece.club].icon}</span><small>${clubShortName(piece)}</small></button>`
+      )).join("")}</div>`;
+    };
+
+    renderTray(redCapturedTray, "red", "CPU取得");
+    renderTray(blueCapturedTray, "blue", "自分取得");
+    blueCapturedTray.querySelectorAll("[data-captured-piece-id]").forEach((button) => {
+      button.addEventListener("click", () => selectCapturedPiece(Rules.getPiece(state, button.dataset.capturedPieceId)));
+    });
+  }
+
   function historyNotation(entry) {
     const coord = `${entry.toCol + 1}${entry.toRow + 1}`;
     const club = historyClubShortName(entry);
-    const suffix = entry.convert ? "+" : entry.type === "special" ? "*" : entry.captureId ? "x" : "";
+    const suffix = entry.type === "drop" ? "打" : entry.convert ? "+" : entry.captureId ? "x" : "";
     return `${coord}${club}${suffix}`;
   }
 
@@ -616,16 +624,14 @@ const clubEntries = Object.entries(CLUBS);
       const move = {
         pieceId: piece.id,
         type: entry.type,
-        special: entry.special,
-        from: { row: entry.fromRow, col: entry.fromCol },
+        side: entry.side,
+        from: entry.type === "drop" ? null : { row: entry.fromRow, col: entry.fromCol },
         to: { row: entry.toRow, col: entry.toCol },
         captureId: entry.captureId,
-        targetId: entry.targetId,
-        captureDecoy: entry.captureDecoy,
         convert: entry.convert
       };
       state = Rules.applyMove(state, move);
-      showMoveTrail(move, piece.team);
+      if (move.type !== "drop") showMoveTrail(move, entry.side);
     }
     replayIndex += 1;
     render();
@@ -763,13 +769,15 @@ const clubEntries = Object.entries(CLUBS);
     const moveText = selectedMoves.length === 0
       ? "合法手なし"
       : selectedMoves.map((move) => `${actionLabel(move)} ${move.to.row + 1}-${move.to.col + 1}`).slice(0, 8).join(" / ");
-    selectionPanel.innerHTML = `<strong>${clubName(piece)}</strong><br>${Game.sideName(piece.team)}<br>${moveText}`;
+    const ownerLabel = piece.captured ? "あなたの持ち駒" : Game.sideName(piece.team);
+    selectionPanel.innerHTML = `<strong>${clubName(piece)}</strong><br>${ownerLabel}<br>${moveText}`;
   }
 
   function render() {
     state.board = global.BukatsuBoard.hydrateBoardPieces(state.board, state.pieces);
     renderBoard();
     renderStatus();
+    renderCapturedTrays();
     renderSelection();
     renderHistory();
     renderMoveTrail();
@@ -778,8 +786,16 @@ const clubEntries = Object.entries(CLUBS);
   }
 
   function selectPiece(piece) {
+    if (!piece || piece.captured || piece.team !== "blue") return;
     selectedPieceId = piece.id;
     selectedMoves = Rules.generatePieceMoves(state, piece);
+    render();
+  }
+
+  function selectCapturedPiece(piece) {
+    if (!piece || !piece.captured || !state.captured.blue.includes(piece.id)) return;
+    selectedPieceId = piece.id;
+    selectedMoves = Rules.generateDropMoves(state, piece.id, "blue");
     render();
   }
 
@@ -790,11 +806,12 @@ const clubEntries = Object.entries(CLUBS);
 
   function commitMove(move) {
     const piece = Rules.getPiece(state, move.pieceId);
+    const movingTeam = move.side || (piece ? piece.team : "blue");
     state = Rules.applyMove(state, move);
     const winner = Rules.getWinner(state);
     clearSelection();
     render();
-    showMoveTrail(move, piece ? piece.team : "blue");
+    if (move.type !== "drop") showMoveTrail(move, movingTeam);
     playMoveSound(move, winner);
     if (!Rules.isFinished(state) && state.turn === "red") {
       runAutoTurn("red");
@@ -806,7 +823,7 @@ const clubEntries = Object.entries(CLUBS);
 
     const legal = selectedMoves.find((move) => move.to.row === row && move.to.col === col);
     const selected = selectedPieceId ? Rules.getPiece(state, selectedPieceId) : null;
-    if (legal && selected && selected.team === "blue") {
+    if (legal && selected && (selected.team === "blue" || (legal.type === "drop" && legal.side === "blue"))) {
       commitMove(legal);
       return;
     }
@@ -852,9 +869,10 @@ const clubEntries = Object.entries(CLUBS);
       const move = Cpu.chooseCpuMove(state, side, cpuConfig());
       if (move) {
         const piece = Rules.getPiece(state, move.pieceId);
+        const movingTeam = move.side || (piece ? piece.team : side);
         state = Rules.applyMove(state, move);
         const winner = Rules.getWinner(state);
-        showMoveTrail(move, piece ? piece.team : side);
+        if (move.type !== "drop") showMoveTrail(move, movingTeam);
         playMoveSound(move, winner);
       } else {
         state.turn = side === "blue" ? "red" : "blue";
@@ -878,7 +896,6 @@ const clubEntries = Object.entries(CLUBS);
     }
     render();
     if (enabled) {
-      playStartSound();
       scheduleSpectatorTurn(260);
     } else if (!Rules.isFinished(state) && state.turn === "red") {
       runAutoTurn("red");

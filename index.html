@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>部活将棋</title>
-  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="style.css?v=20260909-3">
 </head>
 <body>
   <main class="app-shell">
@@ -44,20 +44,24 @@
         <ol id="moveHistory" class="move-history"></ol>
       </aside>
 
-      <div class="board-wrap">
-        <div id="board" class="board" aria-label="学校盤面"></div>
-        <div id="moveTrail" class="move-trail" aria-hidden="true">
-          <span class="move-trail-line"></span>
-        </div>
-        <div id="checkBanner" class="check-banner" aria-live="assertive"></div>
-        <div id="resultDialog" class="result-dialog" role="dialog" aria-modal="true" aria-labelledby="resultTitle" hidden>
-          <h2 id="resultTitle">勝利</h2>
-          <p id="resultMessage">対局が終了しました。</p>
-          <div class="result-actions">
-            <button type="button" data-result-action="new">新規</button>
-            <button type="button" data-result-action="replay">棋譜再現</button>
+      <div class="battlefield">
+        <aside id="redCapturedTray" class="captured-tray captured-tray-left" aria-label="CPUが取った駒"></aside>
+        <div class="board-wrap">
+          <div id="board" class="board" aria-label="学校盤面"></div>
+          <div id="moveTrail" class="move-trail" aria-hidden="true">
+            <span class="move-trail-line"></span>
+          </div>
+          <div id="checkBanner" class="check-banner" aria-live="assertive"></div>
+          <div id="resultDialog" class="result-dialog" role="dialog" aria-modal="true" aria-labelledby="resultTitle" hidden>
+            <h2 id="resultTitle">勝利</h2>
+            <p id="resultMessage">対局が終了しました。</p>
+            <div class="result-actions">
+              <button type="button" data-result-action="new">新規</button>
+              <button type="button" data-result-action="replay">棋譜再現</button>
+            </div>
           </div>
         </div>
+        <aside id="blueCapturedTray" class="captured-tray captured-tray-right" aria-label="あなたが取った駒"></aside>
       </div>
 
       <aside class="panel legend" aria-label="部活"><div id="clubLegend"></div>
@@ -65,12 +69,12 @@
     </section>
   </main>
 
-  <script src="js/config.js"></script>
-  <script src="js/pieces.js"></script>
-  <script src="js/board.js"></script>
-  <script src="js/rules.js"></script>
-  <script src="js/game.js"></script>
-  <script src="js/cpu.js"></script>
-  <script src="js/main.js"></script>
+  <script src="js/config.js?v=20260909-3"></script>
+  <script src="js/pieces.js?v=20260909-3"></script>
+  <script src="js/board.js?v=20260909-3"></script>
+  <script src="js/rules.js?v=20260909-3"></script>
+  <script src="js/game.js?v=20260909-3"></script>
+  <script src="js/cpu.js?v=20260909-3"></script>
+  <script src="js/main.js?v=20260909-3"></script>
 </body>
 </html>

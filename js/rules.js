@@ -14,9 +14,8 @@
     return {
       turn: state.turn,
       board: state.board.map((cell) => ({ ...cell })),
-      pieces: state.pieces.map((piece) => ({ ...piece, status: piece.status.map((item) => ({ ...item })) })),
+      pieces: state.pieces.map((piece) => ({ ...piece })),
       captured: { blue: [...state.captured.blue], red: [...state.captured.red] },
-      hazards: state.hazards.map((hazard) => ({ ...hazard })),
       history: state.history.map((entry) => ({ ...entry })),
       winner: state.winner,
       drawReason: state.drawReason,
@@ -35,11 +34,9 @@
       row: piece.row,
       col: piece.col,
       promoted: piece.promoted,
-      captured: Boolean(piece.captured),
-      status: piece.status.map((item) => ({ ...item })).sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b)))
+      captured: Boolean(piece.captured)
     })).sort((a, b) => a.id.localeCompare(b.id));
-    const hazards = state.hazards.map((hazard) => ({ ...hazard })).sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b)));
-    return JSON.stringify({ turn: state.turn, pieces, hazards, captured: state.captured });
+    return JSON.stringify({ turn: state.turn, pieces, captured: state.captured });
   }
 
   function isFinished(state) {
@@ -65,24 +62,10 @@
     return state.pieces.find((piece) => piece.id === pieceId) || null;
   }
 
-  function decoyAt(state, row, col) {
-    return state.hazards.find((hazard) => hazard.kind === "decoy" && hazard.row === row && hazard.col === col) || null;
-  }
-
-  function hasHazard(state, row, col) {
-    return state.hazards.some((hazard) => hazard.kind !== "decoy" && hazard.row === row && hazard.col === col);
-  }
-
-  function hasStatus(piece, type) {
-    return piece.status.some((item) => item.type === type);
-  }
-
   function isPassable(state, piece, row, col) {
-    if (!inBounds(row, col) || hasHazard(state, row, col)) return false;
+    if (!inBounds(row, col)) return false;
     const occupying = pieceAt(state, row, col);
     if (occupying && occupying.team === piece.team) return false;
-    const decoy = decoyAt(state, row, col);
-    if (decoy && decoy.team === piece.team) return false;
     const terrain = terrainAt(state, row, col);
     if (terrain === "pool" && piece.club !== "swim") {
       return piece.club === "president" || piece.club === "home";
@@ -109,14 +92,7 @@
 
   function rangeFor(state, piece) {
     const terrain = terrainAt(state, piece.row, piece.col);
-    const boost = hasStatus(piece, "boost") ? 1 : 0;
-    return CLUBS[piece.club].attackRange + getBonus(piece, terrain, "range") + boost;
-  }
-
-  function specialRangeFor(state, piece) {
-    const terrain = terrainAt(state, piece.row, piece.col);
-    const boost = hasStatus(piece, "boost") ? 1 : 0;
-    return (CLUBS[piece.club].specialRange || 0) + getBonus(piece, terrain, "specialRange") + boost;
+    return CLUBS[piece.club].attackRange + getBonus(piece, terrain, "range");
   }
 
 
@@ -145,17 +121,10 @@
       for (let step = 1; step <= distance; step += 1) {
         const row = piece.row + dr * step;
         const col = piece.col + dc * step;
-        if (!inBounds(row, col) || hasHazard(state, row, col)) break;
-        const decoy = decoyAt(state, row, col);
+        if (!inBounds(row, col)) break;
         const target = pieceAt(state, row, col);
-        if (decoy) {
-          if (decoy.team !== piece.team && options.canCapture && !hasStatus(piece, "noCapture")) {
-            moves.push(makeMove(piece, row, col, { captureDecoy: true }));
-          }
-          break;
-        }
         if (target) {
-          if (target.team !== piece.team && options.canCapture && !hasStatus(piece, "noCapture")) {
+          if (target.team !== piece.team && options.canCapture) {
             moves.push(makeMove(piece, row, col, { captureId: target.id }));
           }
           break;
@@ -168,11 +137,13 @@
   }
 
   function conversionMoves(state, piece, dirs, distance, slide) {
-    return stepMoves(state, piece, dirs, distance, { canMove: true, canCapture: true, slide })
+    const movement = stepMoves(state, piece, dirs, distance, { canMove: true, canCapture: false, slide });
+    const adjacentAttacks = stepMoves(state, piece, dirs, 1, { canMove: false, canCapture: true, slide: false })
       .map((move) => {
         const target = move.captureId ? getPiece(state, move.captureId) : null;
         return target && target.club !== "president" ? { ...move, type: "attack", convert: true } : move;
       });
+    return movement.concat(adjacentAttacks);
   }
 
   function hasLineOfSight(state, from, to) {
@@ -187,7 +158,7 @@
     while (row !== to.row || col !== to.col) {
       const terrain = terrainAt(state, row, col);
       if (TERRAIN[terrain] && TERRAIN[terrain].blocksLine) return false;
-      if (pieceAt(state, row, col) || decoyAt(state, row, col)) return false;
+      if (pieceAt(state, row, col)) return false;
       row += dr;
       col += dc;
     }
@@ -195,30 +166,24 @@
   }
 
   function hasArcheryCover(state, attacker, target) {
-    if (CLUBS[target.club].shield || hasStatus(target, "guard")) return true;
+    if (CLUBS[target.club].shield) return true;
     const dr = Math.sign(target.row - attacker.row);
     const dc = Math.sign(target.col - attacker.col);
     const coverRow = target.row - dr;
     const coverCol = target.col - dc;
     const cover = pieceAt(state, coverRow, coverCol);
-    return Boolean(cover && cover.team === target.team && (CLUBS[cover.club].shield || hasStatus(cover, "guard")));
+    return Boolean(cover && cover.team === target.team && CLUBS[cover.club].shield);
   }
 
   function lineAttacks(state, piece, dirs, minRange, maxRange) {
     const moves = [];
-    if (hasStatus(piece, "noCapture")) return moves;
     for (const [dr, dc] of dirs) {
       for (let distance = minRange; distance <= maxRange; distance += 1) {
         const row = piece.row + dr * distance;
         const col = piece.col + dc * distance;
         if (!inBounds(row, col)) break;
         if (!hasLineOfSight(state, piece, { row, col })) continue;
-        const decoy = decoyAt(state, row, col);
         const target = pieceAt(state, row, col);
-        if (decoy && decoy.team !== piece.team) {
-          moves.push({ type: "attack", pieceId: piece.id, from: { row: piece.row, col: piece.col }, to: { row, col }, captureDecoy: true });
-          break;
-        }
         if (!target) continue;
         if (target.team !== piece.team) {
           moves.push({ type: "attack", pieceId: piece.id, from: { row: piece.row, col: piece.col }, to: { row, col }, captureId: target.id });
@@ -238,49 +203,6 @@
       });
   }
 
-  function chemistrySpecials(state, piece) {
-    const moves = [];
-    const range = specialRangeFor(state, piece);
-    for (let row = piece.row - range; row <= piece.row + range; row += 1) {
-      for (let col = piece.col - range; col <= piece.col + range; col += 1) {
-        const distance = Math.abs(row - piece.row) + Math.abs(col - piece.col);
-        if (!inBounds(row, col) || distance === 0 || distance > range) continue;
-        if (pieceAt(state, row, col) || hasHazard(state, row, col) || decoyAt(state, row, col)) continue;
-        moves.push({ type: "special", special: "hazard", pieceId: piece.id, from: { row: piece.row, col: piece.col }, to: { row, col } });
-      }
-    }
-    return moves;
-  }
-
-  function targetedSpecials(state, piece, range, targetTeam, special) {
-    const moves = [];
-    for (let row = piece.row - range; row <= piece.row + range; row += 1) {
-      for (let col = piece.col - range; col <= piece.col + range; col += 1) {
-        const distance = Math.abs(row - piece.row) + Math.abs(col - piece.col);
-        if (!inBounds(row, col) || distance === 0 || distance > range) continue;
-        const target = pieceAt(state, row, col);
-        if (!target || target.team !== targetTeam) continue;
-        moves.push({ type: "special", special, pieceId: piece.id, targetId: target.id, from: { row: piece.row, col: piece.col }, to: { row, col } });
-      }
-    }
-    return moves;
-  }
-
-  function lineSpecials(state, piece, dirs, range, special) {
-    return lineAttacks(state, piece, dirs, 1, range).map((move) => ({ ...move, type: "special", special, targetId: move.captureId, captureId: null, captureDecoy: false }));
-  }
-
-  function decoySpecials(state, piece) {
-    const moves = [];
-    for (const [dr, dc] of DIRECTIONS) {
-      const row = piece.row + dr;
-      const col = piece.col + dc;
-      if (!inBounds(row, col) || hasHazard(state, row, col) || pieceAt(state, row, col) || decoyAt(state, row, col)) continue;
-      moves.push({ type: "special", special: "decoy", pieceId: piece.id, from: { row: piece.row, col: piece.col }, to: { row, col } });
-    }
-    return moves;
-  }
-
   function jumpMoves(state, piece, dirs) {
     const moves = [];
     for (const [dr, dc] of dirs) {
@@ -288,23 +210,18 @@
       const midCol = piece.col + dc;
       const row = piece.row + dr * 2;
       const col = piece.col + dc * 2;
-      if (!inBounds(row, col) || hasHazard(state, row, col)) continue;
-      if (!pieceAt(state, midRow, midCol) && !decoyAt(state, midRow, midCol)) continue;
+      if (!inBounds(row, col)) continue;
+      if (!pieceAt(state, midRow, midCol)) continue;
       const target = pieceAt(state, row, col);
-      const decoy = decoyAt(state, row, col);
       if (target && target.team === piece.team) continue;
-      if (decoy && decoy.team === piece.team) continue;
-      if ((target || decoy) && hasStatus(piece, "noCapture")) continue;
-      moves.push(makeMove(piece, row, col, { captureId: target && target.team !== piece.team ? target.id : null, captureDecoy: Boolean(decoy && decoy.team !== piece.team) }));
+      moves.push(makeMove(piece, row, col, { captureId: target && target.team !== piece.team ? target.id : null }));
     }
     return moves;
   }
 
   function generatePieceMoves(state, piece) {
-    if (!piece || piece.captured || isFinished(state) || hasStatus(piece, "stopped")) return [];
+    if (!piece || piece.captured || isFinished(state)) return [];
     const forward = piece.team === "blue" ? -1 : 1;
-    const enemy = piece.team === "blue" ? "red" : "blue";
-    const club = CLUBS[piece.club];
     let moves = [];
 
     if (piece.club === "president") {
@@ -328,26 +245,21 @@
       moves.push(...stepMoves(state, piece, [[0, -1], [0, 1]], 1, { canMove: true, canCapture: true, slide: false }));
     } else if (piece.club === "chemistry") {
       moves = stepMoves(state, piece, ORTHOGONAL, moveLimitFor(state, piece), { canMove: true, canCapture: true, slide: false });
-      moves.push(...chemistrySpecials(state, piece));
     } else if (piece.club === "broadcast") {
       moves = conversionMoves(state, piece, ORTHOGONAL, moveLimitFor(state, piece), false);
     } else if (piece.club === "newspaper") {
       moves = conversionMoves(state, piece, ORTHOGONAL, moveLimitFor(state, piece), true);
     } else if (piece.club === "art") {
       moves = stepMoves(state, piece, DIAGONAL, moveLimitFor(state, piece), { canMove: true, canCapture: true, slide: false });
-      moves.push(...decoySpecials(state, piece));
     } else if (piece.club === "drama") {
       moves = stepMoves(state, piece, DIRECTIONS, moveLimitFor(state, piece), { canMove: true, canCapture: true, slide: false });
-      moves.push(...targetedSpecials(state, piece, specialRangeFor(state, piece), enemy, "noCapture"));
     } else if (piece.club === "pc") {
       moves = stepMoves(state, piece, DIAGONAL, moveLimitFor(state, piece), { canMove: true, canCapture: true, slide: false });
-      moves.push(...lineSpecials(state, piece, ORTHOGONAL, specialRangeFor(state, piece), "stopped"));
     } else if (piece.club === "physics") {
       moves = stepMoves(state, piece, ORTHOGONAL, moveLimitFor(state, piece), { canMove: true, canCapture: true, slide: false });
       moves.push(...jumpMoves(state, piece, ORTHOGONAL));
     } else if (piece.club === "band") {
       moves = stepMoves(state, piece, DIAGONAL, moveLimitFor(state, piece), { canMove: true, canCapture: true, slide: false });
-      moves.push(...targetedSpecials(state, piece, specialRangeFor(state, piece), piece.team, "guard"));
     } else if (piece.club === "baseball") {
       moves = stepMoves(state, piece, ORTHOGONAL, moveLimitFor(state, piece), { canMove: true, canCapture: true, slide: false });
       moves.push(...lineAttacks(state, piece, ORTHOGONAL, 2, rangeFor(state, piece)));
@@ -358,108 +270,113 @@
       moves.push(...jumpMoves(state, piece, ORTHOGONAL));
     } else if (piece.club === "volleyball") {
       moves = stepMoves(state, piece, [[forward, -1], [forward, 0], [forward, 1], [0, -1], [0, 1]], moveLimitFor(state, piece), { canMove: true, canCapture: true, slide: false });
-      moves.push(...targetedSpecials(state, piece, specialRangeFor(state, piece), piece.team, "guard"));
     }
 
-    return moves.filter((move) => isPassable(state, piece, move.to.row, move.to.col) || move.type === "attack" || move.type === "special");
+    return moves.filter((move) => isPassable(state, piece, move.to.row, move.to.col) || move.type === "attack");
   }
 
   function generateLegalMoves(state, side) {
-    return state.pieces
+    const boardMoves = state.pieces
       .filter((piece) => piece.team === side && !piece.captured)
       .flatMap((piece) => generatePieceMoves(state, piece));
+    const dropMoves = state.captured[side]
+      .flatMap((pieceId) => generateDropMoves(state, pieceId, side));
+    return boardMoves.concat(dropMoves);
   }
 
-  function removeDecoy(next, row, col) {
-    next.hazards = next.hazards.filter((hazard) => !(hazard.kind === "decoy" && hazard.row === row && hazard.col === col));
+  function generateDropMoves(state, pieceId, side) {
+    const piece = getPiece(state, pieceId);
+    if (!piece || !piece.captured || piece.club === "president" || isFinished(state)) return [];
+    if (!state.captured[side] || !state.captured[side].includes(pieceId)) return [];
+
+    const dropPiece = { ...piece, team: side, promoted: false };
+    return state.board
+      .filter((cell) => {
+        if (pieceAt(state, cell.row, cell.col)) return false;
+        if (!isPassable(state, dropPiece, cell.row, cell.col)) return false;
+        if (piece.club !== "home") return true;
+        return !state.pieces.some((other) => (
+          !other.captured
+          && other.team === side
+          && other.club === "home"
+          && !other.promoted
+          && other.col === cell.col
+        ));
+      })
+      .map((cell) => ({
+        type: "drop",
+        pieceId,
+        side,
+        from: null,
+        to: { row: cell.row, col: cell.col },
+        captureId: null,
+        convert: false
+      }));
   }
 
   function captureTarget(next, attacker, target) {
     if (!target || target.team === attacker.team) return;
-    const guard = target.status.find((item) => item.type === "guard");
-    if (guard) {
-      target.status = target.status.filter((item) => item !== guard);
-      return;
-    }
     target.captured = true;
+    target.promoted = false;
     next.captured[attacker.team].push(target.id);
     if (target.club === "president") next.winner = attacker.team;
-  }
-
-  function applyStatus(piece, type, turns) {
-    if (!piece || piece.captured) return;
-    piece.status = piece.status.filter((item) => item.type !== type);
-    piece.status.push({ type, turns });
-  }
-
-  function tickEffects(next) {
-    next.hazards = next.hazards
-      .map((hazard) => ({ ...hazard, turns: hazard.turns - 1 }))
-      .filter((hazard) => hazard.turns > 0);
-    for (const piece of next.pieces) {
-      piece.status = piece.status
-        .map((item) => ({ ...item, turns: item.turns - 1 }))
-        .filter((item) => item.turns > 0);
-    }
   }
 
   function applyMove(state, move) {
     const next = cloneState(state);
     const piece = getPiece(next, move.pieceId);
-    if (!piece || piece.captured || isFinished(next)) return next;
+    if (!piece || isFinished(next)) return next;
     const movingClub = piece.club;
-    const movingTeam = piece.team;
+    const movingTeam = move.type === "drop" ? move.side : piece.team;
 
-    if (move.type === "special") {
-      const target = move.targetId ? getPiece(next, move.targetId) : null;
-      if (move.special === "hazard") {
-        next.hazards.push({ kind: "hazard", row: move.to.row, col: move.to.col, team: piece.team, turns: 2 });
-      } else if (move.special === "decoy") {
-        next.hazards.push({ kind: "decoy", row: move.to.row, col: move.to.col, team: piece.team, turns: 3 });
-      } else if (target) {
-        applyStatus(target, move.special, 2);
-      }
-    } else if (move.type === "attack") {
-      if (move.captureDecoy) {
-        removeDecoy(next, move.to.row, move.to.col);
-      } else if (move.convert) {
+    if (move.type === "drop") {
+      const legalDrop = generateDropMoves(next, piece.id, movingTeam)
+        .some((candidate) => candidate.to.row === move.to.row && candidate.to.col === move.to.col);
+      if (!legalDrop) return next;
+      next.captured[movingTeam] = next.captured[movingTeam].filter((pieceId) => pieceId !== piece.id);
+      piece.captured = false;
+      piece.team = movingTeam;
+      piece.originalTeam = movingTeam;
+      piece.promoted = false;
+      piece.row = move.to.row;
+      piece.col = move.to.col;
+    } else if (piece.captured) {
+      return next;
+    }
+
+    if (move.type === "attack") {
+      if (move.convert) {
         const target = move.captureId ? getPiece(next, move.captureId) : pieceAt(next, move.to.row, move.to.col);
         if (target && target.club !== "president" && target.team !== piece.team) {
           target.originalTeam = target.originalTeam || target.team;
           target.team = piece.team;
-          target.status = [];
         }
       } else {
         captureTarget(next, piece, move.captureId ? getPiece(next, move.captureId) : pieceAt(next, move.to.row, move.to.col));
       }
-    } else {
-      if (move.captureDecoy) removeDecoy(next, move.to.row, move.to.col);
+    } else if (move.type !== "drop") {
       captureTarget(next, piece, move.captureId ? getPiece(next, move.captureId) : pieceAt(next, move.to.row, move.to.col));
       piece.row = move.to.row;
       piece.col = move.to.col;
       if (shouldPromote(piece, move.from.row, piece.row)) piece.promoted = true;
     }
 
-    next.turn = piece.team === "blue" ? "red" : "blue";
+    next.turn = movingTeam === "blue" ? "red" : "blue";
     next.moveCount += 1;
     next.history.push({
       side: movingTeam,
       club: movingClub,
       pieceId: piece.id,
       type: move.type,
-      special: move.special || null,
-      fromRow: move.from.row,
-      fromCol: move.from.col,
+      fromRow: move.from ? move.from.row : null,
+      fromCol: move.from ? move.from.col : null,
       toRow: move.to.row,
       toCol: move.to.col,
       captureId: move.captureId || null,
-      targetId: move.targetId || null,
-      captureDecoy: Boolean(move.captureDecoy),
       convert: Boolean(move.convert),
       promoted: piece.promoted || false
     });
-    tickEffects(next);
-        const key = positionKey(next);
+    const key = positionKey(next);
     next.positionCounts[key] = (next.positionCounts[key] || 0) + 1;
     if (next.positionCounts[key] >= 4) next.drawReason = "sennichite";
     next.board = global.BukatsuBoard.hydrateBoardPieces(next.board, next.pieces);
@@ -491,6 +408,7 @@
     pieceAt,
     getPiece,
     generatePieceMoves,
+    generateDropMoves,
     generateLegalMoves,
     applyMove,
     hasLineOfSight,

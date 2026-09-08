@@ -8,7 +8,6 @@
   --select: #f2c94c;
   --move: #5aa86b;
   --attack: #d95d4f;
-  --hazard: #8f62a9;
 }
 
 * {
@@ -175,6 +174,77 @@ button.active {
   padding: 2px;
 }
 
+.battlefield {
+  display: grid;
+  grid-template-columns: minmax(42px, 52px) minmax(0, 1fr) minmax(42px, 52px);
+  align-items: start;
+  gap: 6px;
+  min-width: 0;
+}
+
+.captured-tray {
+  display: grid;
+  align-content: start;
+  gap: 6px;
+  padding-top: 4px;
+}
+
+.captured-tray > strong {
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.2;
+  text-align: center;
+}
+
+.captured-piece-list {
+  display: grid;
+  gap: 4px;
+}
+
+.captured-piece {
+  border: 0;
+  display: grid;
+  place-items: center;
+  width: 38px;
+  min-height: 42px;
+  margin: 0 auto;
+  padding: 3px 1px;
+  color: white;
+  line-height: 1;
+  clip-path: polygon(50% 0, 88% 24%, 98% 100%, 2% 100%, 12% 24%);
+  filter: drop-shadow(0 2px 2px rgba(0, 0, 0, 0.3));
+  font-family: inherit;
+  cursor: pointer;
+}
+
+.captured-piece:disabled {
+  cursor: default;
+  opacity: 0.78;
+}
+
+.captured-piece.selected {
+  outline: 3px solid #f7c948;
+  outline-offset: 2px;
+}
+
+.captured-piece.red {
+  background: var(--red);
+  clip-path: polygon(2% 0, 98% 0, 88% 76%, 50% 100%, 12% 76%);
+}
+
+.captured-piece.blue {
+  background: var(--blue);
+}
+
+.captured-piece > span {
+  font-size: 15px;
+}
+
+.captured-piece small {
+  font-size: 14px;
+  font-weight: 800;
+}
+
 .board {
   display: grid;
   grid-template-columns: repeat(9, minmax(48px, 1fr));
@@ -236,8 +306,7 @@ button.active {
 }
 
 .cell.legal-move::after,
-.cell.legal-attack::after,
-.cell.legal-special::after {
+.cell.legal-attack::after {
   content: "";
   position: absolute;
   inset: 7px;
@@ -251,10 +320,6 @@ button.active {
 
 .cell.legal-attack::after {
   border: 3px solid var(--attack);
-}
-
-.cell.legal-special::after {
-  border: 3px dashed var(--hazard);
 }
 
 .piece {
@@ -293,8 +358,12 @@ button.active {
 .piece small {
   position: relative;
   z-index: 1;
-  font-size: 14px;
+  font-size: 21px;
   text-shadow: 0 2px 2px rgba(0, 0, 0, 0.48);
+}
+
+.piece small.compact {
+  font-size: 17px;
 }
 
 .piece-icon {
@@ -305,16 +374,6 @@ button.active {
   font-size: 16px;
   line-height: 1;
   filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.35));
-}
-
-.hazard-marker {
-  position: absolute;
-  right: 3px;
-  bottom: 2px;
-  z-index: 0;
-  color: var(--hazard);
-  font-size: 16px;
-  font-weight: 900;
 }
 
 .move-trail {
@@ -531,6 +590,10 @@ button.active {
   }
 
   .board-wrap {
+    order: 1;
+  }
+
+  .battlefield {
     order: 1;
   }
 }

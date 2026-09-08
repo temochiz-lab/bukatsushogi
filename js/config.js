@@ -122,9 +122,7 @@
       baseMove: 1,
       attackRange: 1,
       fieldTerrains: ["lab"],
-      specialRange: 2,
-      terrainBonus: { lab: { specialRange: 1 } },
-      specialText: "範囲内に立入禁止2手"
+      specialText: "上下左右1マスを移動・攻撃"
     },
     broadcast: {
       name: "放送部",
@@ -135,7 +133,6 @@
       baseMove: 1,
       attackRange: 1,
       fieldTerrains: ["clubhouse"],
-      specialRange: 2,
       specialText: "攻撃した会長以外の敵を味方にする"
     },
     newspaper: {
@@ -147,44 +144,40 @@
       baseMove: 2,
       attackRange: 1,
       fieldTerrains: ["clubhouse"],
-      specialRange: 2,
       specialText: "攻撃した会長以外の敵を味方にする"
     },
     art: {
       name: "美術部",
       shortName: "美",
       icon: "🎨",
-      role: "decoy",
+      role: "diagonal",
       value: 300,
       baseMove: 1,
       attackRange: 1,
       fieldTerrains: ["clubhouse"],
-      specialRange: 1,
-      specialText: "隣接マスにデコイ設置"
+      specialText: "斜め1マスを移動・攻撃"
     },
     drama: {
       name: "演劇部",
       shortName: "演",
       icon: "🎭",
-      role: "trick",
+      role: "omnidirectional",
       value: 310,
       baseMove: 1,
       attackRange: 1,
       fieldTerrains: ["clubhouse"],
-      specialRange: 1,
-      specialText: "隣接敵の捕獲を1手封じる"
+      specialText: "周囲1マスを移動・攻撃"
     },
     pc: {
       name: "パソコン部",
       shortName: "PC",
       icon: "💻",
-      role: "remoteControl",
+      role: "diagonal",
       value: 360,
       baseMove: 1,
       attackRange: 1,
       fieldTerrains: ["classroom"],
-      specialRange: 3,
-      specialText: "直線3マスの敵を停止"
+      specialText: "斜め1マスを移動・攻撃"
     },
     physics: {
       name: "物理部",
@@ -201,13 +194,12 @@
       name: "吹奏楽部",
       shortName: "吹",
       icon: "🎺",
-      role: "morale",
+      role: "diagonal",
       value: 320,
       baseMove: 1,
       attackRange: 1,
       fieldTerrains: ["clubhouse"],
-      specialRange: 1,
-      specialText: "味方1体に身代わり回避"
+      specialText: "斜め1マスを移動・攻撃"
     },
     baseball: {
       name: "野球部",
@@ -252,8 +244,7 @@
       attackRange: 1,
       fieldTerrains: ["gym"],
       shield: "light",
-      specialRange: 1,
-      specialText: "隣接味方をブロック保護"
+      specialText: "前方3方向と左右1マスを移動・攻撃"
     }
   };
 

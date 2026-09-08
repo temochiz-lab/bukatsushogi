@@ -9,7 +9,6 @@
       board: global.BukatsuBoard.hydrateBoardPieces(board, pieces),
       pieces,
       captured: { blue: [], red: [] },
-      hazards: [],
       history: [],
       winner: null,
       drawReason: null,

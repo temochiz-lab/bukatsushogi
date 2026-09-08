@@ -2,7 +2,7 @@
   "use strict";
 
   function createPiece(id, team, club, row, col) {
-    return { id, team, originalTeam: team, club, row, col, promoted: false, status: [] };
+    return { id, team, originalTeam: team, club, row, col, promoted: false };
   }
 
   const homeCols = [0, 1, 2, 3, 4, 5, 6, 7, 8];
