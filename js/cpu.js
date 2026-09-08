@@ -56,6 +56,36 @@
     });
   }
 
+  function simpleMoveScore(state, move, side) {
+    const piece = Rules.getPiece(state, move.pieceId);
+    const target = move.captureId ? Rules.getPiece(state, move.captureId) : null;
+    const enemy = side === "blue" ? "red" : "blue";
+    const enemyPresident = findPresident(state, enemy);
+    let score = 0;
+
+    if (target) {
+      if (target.club === "president") return 1000000;
+      score += CLUBS[target.club].value * (move.convert ? 2 : 1);
+    }
+    if (move.type === "drop" && piece) score += CLUBS[piece.club].value * 0.08;
+    if (move.type === "move" && piece && piece.club !== "president" && !piece.promoted && move.to
+      && ((side === "blue" && move.to.row <= 2) || (side === "red" && move.to.row >= 6))) {
+      score += 80;
+    }
+    if (enemyPresident && move.to) score += (18 - distance(move.to, enemyPresident)) * 3;
+    return score;
+  }
+
+  function chooseSimpleMove(state, side, school) {
+    const moves = Rules.generateLegalMoves(state, side)
+      .map((move) => ({ move, score: simpleMoveScore(state, move, side) }))
+      .sort((a, b) => b.score - a.score);
+    if (moves.length === 0) return null;
+    const windowSize = Math.min(moves.length, school.choiceWindow || 1);
+    const index = Math.random() < school.blunderRate ? Math.floor(Math.random() * windowSize) : 0;
+    return moves[index].move;
+  }
+
   function minimax(state, depth, alpha, beta, maximizing, side, school) {
     const winner = Rules.getWinner(state);
     if (depth === 0 || winner) {
@@ -97,6 +127,7 @@
   }
 
   function chooseCpuMove(state, side, school) {
+    if (school.algorithm === "simple") return chooseSimpleMove(state, side, school);
     const moves = orderedMoves(state, side);
     if (moves.length === 0) return null;
     if (Math.random() < school.blunderRate) {
@@ -105,5 +136,5 @@
     return minimax(state, school.depth, -Infinity, Infinity, true, side, school).move;
   }
 
-  global.BukatsuCpu = { evaluateBoard, minimax, chooseCpuMove };
+  global.BukatsuCpu = { evaluateBoard, minimax, chooseCpuMove, chooseSimpleMove };
 })(globalThis);

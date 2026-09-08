@@ -82,9 +82,9 @@
     };
   }
 
-  function addTeam(pieces, team, homeRow, middleRow, backRow, middleLine, backLine) {
+  function addTeam(pieces, team, homeRow, middleRow, backRow, middleLine, backLine, frontClub = "home") {
     for (const col of homeCols) {
-      pieces.push(createPiece(`${team}-home-${col}`, team, "home", homeRow, col));
+      pieces.push(createPiece(`${team}-${frontClub}-front-${col}`, team, frontClub, homeRow, col));
     }
 
     for (const [club, col] of middleLine) {
@@ -99,9 +99,10 @@
   function createInitialPieces(cpuSchoolKey, playerLineup) {
     const pieces = [];
     const cpuLineup = cpuLineups[cpuSchoolKey] || cpuLineups.normal;
+    const cpuFrontClub = global.BukatsuConfig.CPU_SCHOOLS[cpuSchoolKey]?.frontClub || "home";
     const blueLineup = normalizePlayerLineup(playerLineup);
     addTeam(pieces, "blue", 6, 7, 8, blueLineup.middleLine, blueLineup.backLine);
-    addTeam(pieces, "red", 2, 1, 0, cpuLineup.middleLine, cpuLineup.backLine);
+    addTeam(pieces, "red", 2, 1, 0, cpuLineup.middleLine, cpuLineup.backLine, cpuFrontClub);
     return pieces;
   }
 

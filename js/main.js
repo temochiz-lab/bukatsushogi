@@ -431,9 +431,14 @@ const clubEntries = Object.entries(CLUBS);
   }
 
   function renderSchoolOptions() {
-    schoolSelect.innerHTML = Object.entries(CPU_SCHOOLS).map(([key, school]) => (
+    const entries = Object.entries(CPU_SCHOOLS);
+    const schoolOptions = entries.filter(([, school]) => !school.frontClub).map(([key, school]) => (
       `<option value="${key}">${school.name}</option>`
     )).join("");
+    const clubOptions = entries.filter(([, school]) => school.frontClub).map(([key, school]) => (
+      `<option value="${key}">${school.name}</option>`
+    )).join("");
+    schoolSelect.innerHTML = `<optgroup label="対戦校">${schoolOptions}</optgroup><optgroup label="単体部活">${clubOptions}</optgroup>`;
     schoolSelect.value = "normal";
 
     difficultySelect.innerHTML = Object.entries(CPU_DIFFICULTIES).map(([key, difficulty]) => (

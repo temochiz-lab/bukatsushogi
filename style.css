@@ -279,7 +279,7 @@ button.active {
 .cell[data-terrain="gym"] { background-image: linear-gradient(rgba(255, 250, 238, 0.16), rgba(255, 250, 238, 0.16)), url("assets/terrain/gym.png"); }
 .cell[data-terrain="pool"] { background-image: linear-gradient(rgba(255, 250, 238, 0.12), rgba(255, 250, 238, 0.12)), url("assets/terrain/pool.png"); }
 .cell[data-terrain="lab"] { background-image: linear-gradient(rgba(255, 250, 238, 0.16), rgba(255, 250, 238, 0.16)), url("assets/terrain/lab.png"); }
-.cell[data-terrain="archeryRange"] { background-image: linear-gradient(rgba(255, 250, 238, 0.16), rgba(255, 250, 238, 0.16)), url("assets/terrain/archeryRange.png"); }
+.cell[data-terrain="archeryRange"] { background-image: linear-gradient(rgba(255, 250, 238, 0.16), rgba(255, 250, 238, 0.16)), url("assets/terrain/archeryRange.png?v=20260909-2"); }
 .cell[data-terrain="courtyard"] { background-image: linear-gradient(rgba(255, 250, 238, 0.18), rgba(255, 250, 238, 0.18)), url("assets/terrain/courtyard.png"); }
 .cell[data-terrain="clubhouse"] { background-image: linear-gradient(rgba(255, 250, 238, 0.18), rgba(255, 250, 238, 0.18)), url("assets/terrain/clubhouse.png"); }
 .cell[data-terrain="tennis"] { background-image: linear-gradient(rgba(255, 250, 238, 0.14), rgba(255, 250, 238, 0.14)), url("assets/terrain/tennis.png"); }
