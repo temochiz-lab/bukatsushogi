@@ -1,7 +1,7 @@
 (function (global) {
   "use strict";
 
-  const { TERRAIN, CLUBS, CPU_SCHOOLS } = global.BukatsuConfig;
+  const { TERRAIN, CLUBS, CPU_SCHOOLS, CPU_DIFFICULTIES } = global.BukatsuConfig;
   const Rules = global.BukatsuRules;
   const Game = global.BukatsuGame;
   const Cpu = global.BukatsuCpu;
@@ -21,6 +21,7 @@
   const spectatorButton = document.getElementById("spectatorButton");
   const restartButton = document.getElementById("restartButton");
   const schoolSelect = document.getElementById("schoolSelect");
+  const difficultySelect = document.getElementById("difficultySelect");
   const clubLegend = document.getElementById("clubLegend");
   const deckSetup = document.getElementById("deckSetup");
   const deckButton = document.getElementById("deckButton");
@@ -84,7 +85,7 @@
   }
 
   function playMoveSound(move, winner) {
-    if (move.captureId) {
+    if (move.captureId && !move.convert) {
       playSound("capture");
     } else {
       playSound("move");
@@ -100,27 +101,27 @@
     return CPU_SCHOOLS[schoolSelect.value] || CPU_SCHOOLS.normal;
   }
 
-
-  function isNarikin(piece) {
-    return piece && piece.club === "home" && piece.promoted;
+  function cpuConfig() {
+    const difficulty = CPU_DIFFICULTIES[difficultySelect.value] || CPU_DIFFICULTIES.normal;
+    return { ...difficulty, weights: schoolConfig().weights };
   }
 
+
   function clubName(piece) {
-    if (isNarikin(piece)) return "成金";
     const name = CLUBS[piece.club].name;
     return piece.promoted ? `${name}（成）` : name;
   }
 
   function clubShortName(piece) {
-    return isNarikin(piece) ? "成" : CLUBS[piece.club].shortName;
+    return CLUBS[piece.club].shortName;
   }
 
   function historyClubShortName(entry) {
-    if (entry.club === "home" && entry.promoted) return "成";
     const shortName = CLUBS[entry.club].shortName;
     return entry.promoted ? `${shortName}+` : shortName;
   }
   function actionLabel(move) {
+    if (move.convert) return "勧誘";
     if (move.type === "attack") return "射撃";
     if (move.type === "special") return "妨害";
     return move.captureId ? "捕獲" : "移動";
@@ -130,7 +131,6 @@
     const dirs = {
       president: [[-1, -1], [-1, 0], [-1, 1], [0, -1], [0, 1], [1, -1], [1, 0], [1, 1]],
       home: [[-1, 0]],
-      promotedHome: [[-1, -1], [-1, 0], [-1, 1], [0, -1], [0, 1], [1, 0]],
       track: [[-1, 0], [0, -1], [0, 1], [1, 0]],
       archery: [[-1, -1], [-1, 1], [1, -1], [1, 1]],
       kendo: [[-1, -1], [-1, 0], [-1, 1], [0, -1], [0, 1]],
@@ -145,7 +145,6 @@
       pc: [[-1, -1], [-1, 1], [1, -1], [1, 1]],
       physics: [[-1, 0], [0, -1], [0, 1], [1, 0]],
       band: [[-1, -1], [-1, 1], [1, -1], [1, 1]],
-      nurse: [[-1, 0], [0, -1], [0, 1], [1, 0]],
       baseball: [[-1, 0], [0, -1], [0, 1], [1, 0]],
       soccer: [[-1, 0], [0, -1], [0, 1], [1, 0]],
       basketball: [[-1, -1], [-1, 0], [-1, 1], [0, -1], [0, 1], [1, -1], [1, 0], [1, 1]],
@@ -180,8 +179,8 @@
   }
 
   function promotionText(key) {
-    if (key === "promotedHome" || key === "president") return "";
-    return key === "home" ? "敵陣3段で成金" : "敵陣3段で成り移動+1";
+    if (key === "president") return "";
+    return key === "home" ? "敵陣3段で成る" : "敵陣3段で成り移動+1";
   }
 
   function detailText(key, club) {
@@ -430,7 +429,7 @@ deckSetup.querySelectorAll("[data-storage-action]").forEach((button) => {
     render();
   }
   function renderLegends() {
-const clubEntries = Object.entries(CLUBS).concat([["promotedHome", { name: "成金", shortName: "成", specialText: "帰宅部が敵陣3段で成る" }]]);
+const clubEntries = Object.entries(CLUBS);
     clubLegend.innerHTML = clubEntries.map(([key, club]) => (
       `<div class="legend-row club-row"><span class="club-chip">${club.shortName}</span><span class="club-name">${club.name}</span><span class="move-hint">${movementDiagram(key)}</span><span class="club-special">${detailText(key, club) || "-"}</span></div>`
     )).join("");
@@ -438,9 +437,14 @@ const clubEntries = Object.entries(CLUBS).concat([["promotedHome", { name: "成�
 
   function renderSchoolOptions() {
     schoolSelect.innerHTML = Object.entries(CPU_SCHOOLS).map(([key, school]) => (
-      `<option value="${key}">${school.name} ${school.stars}</option>`
+      `<option value="${key}">${school.name}</option>`
     )).join("");
     schoolSelect.value = "normal";
+
+    difficultySelect.innerHTML = Object.entries(CPU_DIFFICULTIES).map(([key, difficulty]) => (
+      `<option value="${key}">${difficulty.name} ${difficulty.stars}</option>`
+    )).join("");
+    difficultySelect.value = "normal";
   }
 
   function updateSpectatorButton() {
@@ -482,9 +486,10 @@ const clubEntries = Object.entries(CLUBS).concat([["promotedHome", { name: "成�
       const piece = Rules.pieceAt(state, cell.row, cell.col);
       if (piece) {
         const pieceEl = document.createElement("span");
-        pieceEl.className = `piece ${piece.team}${piece.promoted ? " promoted" : ""}`;
+        const originalTeam = piece.originalTeam || piece.team;
+        pieceEl.className = `piece color-${originalTeam} facing-${piece.team}${piece.promoted ? " promoted" : ""}`;
         pieceEl.title = `${Game.sideName(piece.team)} ${clubName(piece)}`;
-        pieceEl.innerHTML = `<small>${clubShortName(piece)}</small>`;
+        pieceEl.innerHTML = `<span class="piece-icon" aria-hidden="true">${CLUBS[piece.club].icon}</span><small>${clubShortName(piece)}</small>`;
         cellEl.appendChild(pieceEl);
       }
 
@@ -521,7 +526,7 @@ const clubEntries = Object.entries(CLUBS).concat([["promotedHome", { name: "成�
   function historyNotation(entry) {
     const coord = `${entry.toCol + 1}${entry.toRow + 1}`;
     const club = historyClubShortName(entry);
-    const suffix = entry.type === "special" ? "*" : entry.captureId ? "x" : "";
+    const suffix = entry.convert ? "+" : entry.type === "special" ? "*" : entry.captureId ? "x" : "";
     return `${coord}${club}${suffix}`;
   }
 
@@ -616,7 +621,8 @@ const clubEntries = Object.entries(CLUBS).concat([["promotedHome", { name: "成�
         to: { row: entry.toRow, col: entry.toCol },
         captureId: entry.captureId,
         targetId: entry.targetId,
-        captureDecoy: entry.captureDecoy
+        captureDecoy: entry.captureDecoy,
+        convert: entry.convert
       };
       state = Rules.applyMove(state, move);
       showMoveTrail(move, piece.team);
@@ -843,7 +849,7 @@ const clubEntries = Object.entries(CLUBS).concat([["promotedHome", { name: "成�
         render();
         return;
       }
-      const move = Cpu.chooseCpuMove(state, side, schoolConfig());
+      const move = Cpu.chooseCpuMove(state, side, cpuConfig());
       if (move) {
         const piece = Rules.getPiece(state, move.pieceId);
         state = Rules.applyMove(state, move);
@@ -892,6 +898,18 @@ const clubEntries = Object.entries(CLUBS).concat([["promotedHome", { name: "成�
     resetGameForDeck(true);
     render();
     if (spectatorMode) scheduleSpectatorTurn(260);
+  });
+
+  difficultySelect.addEventListener("change", () => {
+    if (!setupComplete) return;
+    cpuBusy = false;
+    clearAutoTimer();
+    render();
+    if (spectatorMode) {
+      scheduleSpectatorTurn(260);
+    } else if (!Rules.isFinished(state) && state.turn === "red") {
+      runAutoTurn("red");
+    }
   });
 
   deckButton.addEventListener("click", openDeckSetup);

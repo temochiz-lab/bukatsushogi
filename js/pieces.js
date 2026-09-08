@@ -2,7 +2,7 @@
   "use strict";
 
   function createPiece(id, team, club, row, col) {
-    return { id, team, club, row, col, promoted: false, status: [] };
+    return { id, team, originalTeam: team, club, row, col, promoted: false, status: [] };
   }
 
   const homeCols = [0, 1, 2, 3, 4, 5, 6, 7, 8];
@@ -38,13 +38,9 @@
       backLine: [["pc", 0], ["physics", 1], ["chemistry", 2], ["art", 3], ["president", 4], ["art", 5], ["chemistry", 6], ["physics", 7], ["pc", 8]],
       middleLine: [["basketball", 1], ["baseball", 4], ["volleyball", 7]]
     },
-    imperial: {
-      backLine: [["broadcast", 0], ["newspaper", 1], ["art", 2], ["drama", 3], ["president", 4], ["drama", 5], ["art", 6], ["newspaper", 7], ["broadcast", 8]],
-      middleLine: [["pc", 1], ["archery", 4], ["nurse", 7]]
-    },
     science: {
       backLine: [["physics", 0], ["chemistry", 1], ["pc", 2], ["archery", 3], ["president", 4], ["archery", 5], ["pc", 6], ["chemistry", 7], ["physics", 8]],
-      middleLine: [["nurse", 1], ["chemistry", 4], ["art", 7]]
+      middleLine: [["physics", 1], ["chemistry", 4], ["art", 7]]
     },
     cruel: {
       backLine: [["volleyball", 0], ["swim", 1], ["judo", 2], ["kendo", 3], ["president", 4], ["kendo", 5], ["basketball", 6], ["soccer", 7], ["volleyball", 8]],

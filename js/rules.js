@@ -30,6 +30,7 @@
     const pieces = state.pieces.map((piece) => ({
       id: piece.id,
       team: piece.team,
+      originalTeam: piece.originalTeam || piece.team,
       club: piece.club,
       row: piece.row,
       col: piece.col,
@@ -164,6 +165,14 @@
       }
     }
     return moves;
+  }
+
+  function conversionMoves(state, piece, dirs, distance, slide) {
+    return stepMoves(state, piece, dirs, distance, { canMove: true, canCapture: true, slide })
+      .map((move) => {
+        const target = move.captureId ? getPiece(state, move.captureId) : null;
+        return target && target.club !== "president" ? { ...move, type: "attack", convert: true } : move;
+      });
   }
 
   function hasLineOfSight(state, from, to) {
@@ -321,11 +330,9 @@
       moves = stepMoves(state, piece, ORTHOGONAL, moveLimitFor(state, piece), { canMove: true, canCapture: true, slide: false });
       moves.push(...chemistrySpecials(state, piece));
     } else if (piece.club === "broadcast") {
-      moves = stepMoves(state, piece, ORTHOGONAL, moveLimitFor(state, piece), { canMove: true, canCapture: true, slide: false });
-      moves.push(...targetedSpecials(state, piece, specialRangeFor(state, piece), piece.team, "boost"));
+      moves = conversionMoves(state, piece, ORTHOGONAL, moveLimitFor(state, piece), false);
     } else if (piece.club === "newspaper") {
-      moves = stepMoves(state, piece, ORTHOGONAL, moveLimitFor(state, piece), { canMove: true, canCapture: false, slide: true });
-      moves.push(...targetedSpecials(state, piece, specialRangeFor(state, piece), enemy, "noCapture"));
+      moves = conversionMoves(state, piece, ORTHOGONAL, moveLimitFor(state, piece), true);
     } else if (piece.club === "art") {
       moves = stepMoves(state, piece, DIAGONAL, moveLimitFor(state, piece), { canMove: true, canCapture: true, slide: false });
       moves.push(...decoySpecials(state, piece));
@@ -341,9 +348,6 @@
     } else if (piece.club === "band") {
       moves = stepMoves(state, piece, DIAGONAL, moveLimitFor(state, piece), { canMove: true, canCapture: true, slide: false });
       moves.push(...targetedSpecials(state, piece, specialRangeFor(state, piece), piece.team, "guard"));
-    } else if (piece.club === "nurse") {
-      moves = stepMoves(state, piece, ORTHOGONAL, moveLimitFor(state, piece), { canMove: true, canCapture: true, slide: false });
-      moves.push(...targetedSpecials(state, piece, specialRangeFor(state, piece), piece.team, "cleanse"));
     } else if (piece.club === "baseball") {
       moves = stepMoves(state, piece, ORTHOGONAL, moveLimitFor(state, piece), { canMove: true, canCapture: true, slide: false });
       moves.push(...lineAttacks(state, piece, ORTHOGONAL, 2, rangeFor(state, piece)));
@@ -412,14 +416,19 @@
         next.hazards.push({ kind: "hazard", row: move.to.row, col: move.to.col, team: piece.team, turns: 2 });
       } else if (move.special === "decoy") {
         next.hazards.push({ kind: "decoy", row: move.to.row, col: move.to.col, team: piece.team, turns: 3 });
-      } else if (move.special === "cleanse" && target && target.team === piece.team) {
-        target.status = [];
       } else if (target) {
         applyStatus(target, move.special, 2);
       }
     } else if (move.type === "attack") {
       if (move.captureDecoy) {
         removeDecoy(next, move.to.row, move.to.col);
+      } else if (move.convert) {
+        const target = move.captureId ? getPiece(next, move.captureId) : pieceAt(next, move.to.row, move.to.col);
+        if (target && target.club !== "president" && target.team !== piece.team) {
+          target.originalTeam = target.originalTeam || target.team;
+          target.team = piece.team;
+          target.status = [];
+        }
       } else {
         captureTarget(next, piece, move.captureId ? getPiece(next, move.captureId) : pieceAt(next, move.to.row, move.to.col));
       }
@@ -444,8 +453,9 @@
       toRow: move.to.row,
       toCol: move.to.col,
       captureId: move.captureId || null,
-            targetId: move.targetId || null,
+      targetId: move.targetId || null,
       captureDecoy: Boolean(move.captureDecoy),
+      convert: Boolean(move.convert),
       promoted: piece.promoted || false
     });
     tickEffects(next);
