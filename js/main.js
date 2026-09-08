@@ -786,7 +786,7 @@ const clubEntries = Object.entries(CLUBS);
   }
 
   function selectPiece(piece) {
-    if (!piece || piece.captured || piece.team !== "blue") return;
+    if (!piece || piece.captured) return;
     selectedPieceId = piece.id;
     selectedMoves = Rules.generatePieceMoves(state, piece);
     render();

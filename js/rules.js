@@ -137,13 +137,11 @@
   }
 
   function conversionMoves(state, piece, dirs, distance, slide) {
-    const movement = stepMoves(state, piece, dirs, distance, { canMove: true, canCapture: false, slide });
-    const adjacentAttacks = stepMoves(state, piece, dirs, 1, { canMove: false, canCapture: true, slide: false })
+    return stepMoves(state, piece, dirs, distance, { canMove: true, canCapture: true, slide })
       .map((move) => {
         const target = move.captureId ? getPiece(state, move.captureId) : null;
         return target && target.club !== "president" ? { ...move, type: "attack", convert: true } : move;
       });
-    return movement.concat(adjacentAttacks);
   }
 
   function hasLineOfSight(state, from, to) {
