@@ -72,13 +72,23 @@
     return lineupFromClubKeys(shuffle(playableClubKeys()).slice(0, playerDeckSlots.length));
   }
 
+  function lineupForSchool(schoolKey) {
+    const lineup = cpuLineups[schoolKey] || cpuLineups.normal;
+    return {
+      backLine: lineup.backLine,
+      middleLine: lineup.middleLine,
+      frontClub: global.BukatsuConfig.CPU_SCHOOLS[schoolKey]?.frontClub || "home"
+    };
+  }
+
   function normalizePlayerLineup(playerLineup) {
     if (!playerLineup || !Array.isArray(playerLineup.backLine) || !Array.isArray(playerLineup.middleLine)) {
       return randomPlayerLineup();
     }
     return {
       backLine: playerFixedBackLine.concat(playerLineup.backLine.filter(([club]) => club !== "president")),
-      middleLine: playerLineup.middleLine
+      middleLine: playerLineup.middleLine,
+      frontClub: playerLineup.frontClub || "home"
     };
   }
 
@@ -101,7 +111,7 @@
     const cpuLineup = cpuLineups[cpuSchoolKey] || cpuLineups.normal;
     const cpuFrontClub = global.BukatsuConfig.CPU_SCHOOLS[cpuSchoolKey]?.frontClub || "home";
     const blueLineup = normalizePlayerLineup(playerLineup);
-    addTeam(pieces, "blue", 6, 7, 8, blueLineup.middleLine, blueLineup.backLine);
+    addTeam(pieces, "blue", 6, 7, 8, blueLineup.middleLine, blueLineup.backLine, blueLineup.frontClub);
     addTeam(pieces, "red", 2, 1, 0, cpuLineup.middleLine, cpuLineup.backLine, cpuFrontClub);
     return pieces;
   }
@@ -112,6 +122,7 @@
     playerDeckSlots,
     playableClubKeys,
     lineupFromClubKeys,
+    lineupForSchool,
     randomPlayerLineup
   };
 })(globalThis);

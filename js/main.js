@@ -31,11 +31,12 @@
   const deckSetup = document.getElementById("deckSetup");
   const deckButton = document.getElementById("deckButton");
 
-  let state = Game.createGameState("normal");
+  let playerSchoolKey = "normal";
+  let state = Game.createGameState("normal", global.BukatsuPieces.lineupForSchool(playerSchoolKey));
   let mapBoard = state.board.map(({ pieceId, ...cell }) => cell);
   let setupComplete = false;
   let deckStep = "choice";
-  let deckMode = null;
+  let deckMode = "preset";
   let manualDeck = [];
   let selectedDeckClub = null;
   let draggedDeckClub = null;
@@ -216,20 +217,16 @@
 
   function renderCpuCommandPanel() {
     document.body.classList.toggle("replay-active", replayActive);
-    const visible = !Rules.isFinished(state) && !replayActive;
+    const visible = setupComplete && !Rules.isFinished(state) && !replayActive;
     cpuCommandPanel.hidden = !visible;
-    modeToggleButton.hidden = !setupComplete || !visible;
+    modeToggleButton.hidden = !visible;
     if (!visible) return;
 
-    const showBlueControls = setupComplete && spectatorMode;
+    const showBlueControls = spectatorMode;
     blueCpuControls.hidden = !showBlueControls;
 
     for (const label of cpuStrategyLabels) {
       const side = label.dataset.cpuStrategy;
-      if (!setupComplete) {
-        label.textContent = side === "blue" ? STRATEGY_LABELS[playerStrategy] : "未定";
-        continue;
-      }
       const difficultyKey = activeCpuDifficultyKey(side);
       const selectedStrategyName = STRATEGY_LABELS[cpuStrategies[side]];
       const strategyName = difficultyKey === "easy"
@@ -350,10 +347,7 @@
   function resetGameForDeck(newMap = false) {
     cpuRunVersion += 1;
     if (newMap) mapBoard = global.BukatsuBoard.createBoard();
-    const lineup = deckMode === "manual"
-      ? global.BukatsuPieces.lineupFromClubKeys(manualDeck)
-      : null;
-    state = Game.createGameState(schoolSelect.value, lineup, mapBoard);
+    state = Game.createGameState(schoolSelect.value, selectedPlayerLineup(), mapBoard);
     cpuBusy = false;
     winnerSoundPlayedFor = null;
     clearAutoTimer();
@@ -459,6 +453,23 @@
     return `<div class="strategy-picker" role="group" aria-label="自分の作戦">${buttons}</div>`;
   }
 
+  function schoolOptionsHtml(selectedKey, schoolGroupLabel) {
+    const entries = Object.entries(CPU_SCHOOLS);
+    const schoolOptions = entries.filter(([, school]) => !school.frontClub).map(([key, school]) => (
+      `<option value="${key}"${key === selectedKey ? " selected" : ""}>${school.name}</option>`
+    )).join("");
+    const clubOptions = entries.filter(([, school]) => school.frontClub).map(([key, school]) => (
+      `<option value="${key}"${key === selectedKey ? " selected" : ""}>${school.name}</option>`
+    )).join("");
+    return `<optgroup label="${schoolGroupLabel}">${schoolOptions}</optgroup><optgroup label="部活">${clubOptions}</optgroup>`;
+  }
+
+  function selectedPlayerLineup() {
+    return deckMode === "manual"
+      ? global.BukatsuPieces.lineupFromClubKeys(manualDeck)
+      : global.BukatsuPieces.lineupForSchool(playerSchoolKey);
+  }
+
   function bindStrategyPicker() {
     deckSetup.querySelectorAll("[data-player-strategy]").forEach((button) => {
       button.addEventListener("click", () => {
@@ -483,7 +494,7 @@
     if (deckStep === "choice") {
       deckSetup.innerHTML = `
         <div class="deck-choice">
-          <div class="deck-choice-main"><h2>先手の編成</h2><p>会長と帰宅部は固定。残りの部活を決めて対局を始めます。</p><div class="strategy-select-row"><strong>自分の作戦</strong>${strategyPickerHtml()}</div></div>
+          <div class="deck-choice-main"><h2>先手の編成</h2><p>配置と作戦を選んで対局を始めます。</p><div class="player-setup-row"><label class="player-lineup-select">自分の配置<select data-player-school>${schoolOptionsHtml(playerSchoolKey, "学科")}</select></label><div class="strategy-select-row"><strong>自分の作戦</strong>${strategyPickerHtml()}</div></div></div>
           <div class="deck-choice-actions">
             <span>開始方法</span>
             <button type="button" class="setup-mode-button auto" data-deck-action="auto">自動操作</button>
@@ -492,12 +503,18 @@
           </div>
         </div>`;
       bindStrategyPicker();
+      deckSetup.querySelector("[data-player-school]").addEventListener("change", (event) => {
+        playerSchoolKey = event.currentTarget.value;
+        deckMode = "preset";
+        resetGameForDeck();
+        render();
+      });
       deckSetup.querySelector('[data-deck-action="auto"]').addEventListener("click", () => {
-        deckMode = "auto";
+        deckMode = "preset";
         completeDeckSetup(true);
       });
       deckSetup.querySelector('[data-deck-action="manual-start"]').addEventListener("click", () => {
-        deckMode = "auto";
+        deckMode = "preset";
         completeDeckSetup(false);
       });
       deckSetup.querySelector('[data-deck-action="manual"]').addEventListener("click", () => {
@@ -624,14 +641,7 @@ const clubEntries = Object.entries(CLUBS);
   }
 
   function renderSchoolOptions() {
-    const entries = Object.entries(CPU_SCHOOLS);
-    const schoolOptions = entries.filter(([, school]) => !school.frontClub).map(([key, school]) => (
-      `<option value="${key}">${school.name}</option>`
-    )).join("");
-    const clubOptions = entries.filter(([, school]) => school.frontClub).map(([key, school]) => (
-      `<option value="${key}">${school.name}</option>`
-    )).join("");
-    schoolSelect.innerHTML = `<optgroup label="対戦校">${schoolOptions}</optgroup><optgroup label="部活">${clubOptions}</optgroup>`;
+    schoolSelect.innerHTML = schoolOptionsHtml("normal", "対戦校");
     schoolSelect.value = "normal";
 
   }
@@ -764,14 +774,14 @@ const clubEntries = Object.entries(CLUBS);
     stopReplay();
     setupComplete = false;
     deckStep = "choice";
-    deckMode = null;
+    deckMode = "preset";
     manualDeck = [];
     selectedDeckClub = null;
     storageMode = null;
     storageDraftName = "";
     resultDialogShownFor = null;
     mapBoard = global.BukatsuBoard.createBoard();
-    state = Game.createGameState(schoolSelect.value, null, mapBoard);
+    state = Game.createGameState(schoolSelect.value, selectedPlayerLineup(), mapBoard);
     cpuBusy = false;
     spectatorMode = false;
     resetCpuControls();
@@ -787,10 +797,7 @@ const clubEntries = Object.entries(CLUBS);
     resultDialog.classList.remove("visible");
     if (replayTimerId) window.clearTimeout(replayTimerId);
     replayActive = true;
-    const lineup = deckMode === "manual"
-      ? global.BukatsuPieces.lineupFromClubKeys(manualDeck)
-      : null;
-    state = Game.createGameState(schoolSelect.value, lineup, mapBoard);
+    state = Game.createGameState(schoolSelect.value, selectedPlayerLineup(), mapBoard);
     resultDialogShownFor = null;
     replayIndex = 0;
     cpuBusy = true;
