@@ -264,6 +264,14 @@
     cruel: {
       name: "体育科",
       weights: { material: 1, presidentSafety: 1.35, pressure: 1.15, mobility: 0.5, terrain: 0.65 }
+    },
+    commercial: {
+      name: "商業科",
+      weights: { material: 1, presidentSafety: 0.95, pressure: 0.85, mobility: 0.38, terrain: 0.4 }
+    },
+    agriculture: {
+      name: "農業科",
+      weights: { material: 1, presidentSafety: 1.1, pressure: 0.9, mobility: 0.4, terrain: 0.58 }
     }
   };
 

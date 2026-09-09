@@ -45,6 +45,14 @@
     cruel: {
       backLine: [["volleyball", 0], ["swim", 1], ["judo", 2], ["kendo", 3], ["president", 4], ["kendo", 5], ["basketball", 6], ["soccer", 7], ["volleyball", 8]],
       middleLine: [["track", 1], ["rugby", 4], ["baseball", 7]]
+    },
+    commercial: {
+      backLine: [["pc", 0], ["broadcast", 1], ["newspaper", 2], ["art", 3], ["president", 4], ["art", 5], ["newspaper", 6], ["broadcast", 7], ["pc", 8]],
+      middleLine: [["drama", 1], ["band", 4], ["basketball", 7]]
+    },
+    agriculture: {
+      backLine: [["chemistry", 0], ["track", 1], ["judo", 2], ["rugby", 3], ["president", 4], ["rugby", 5], ["judo", 6], ["track", 7], ["chemistry", 8]],
+      middleLine: [["baseball", 1], ["physics", 4], ["volleyball", 7]]
     }
   };
 
