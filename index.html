@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>部活将棋 高校生編</title>
-  <link rel="stylesheet" href="style.css?v=20260909-6">
+  <link rel="stylesheet" href="style.css?v=20260909-25">
 </head>
 <body>
   <main class="app-shell">
@@ -13,18 +13,57 @@
         <h1>部活将棋 高校生編</h1>
         <p id="statusText">準備中</p>
       </div>
+      <section id="cpuCommandPanel" class="player-command-panel" aria-label="CPU強度と全体作戦">
+        <div id="blueCpuControls" class="cpu-strength-block" hidden>
+          <div class="player-command-head"><strong>自分CPU強度</strong><span data-cpu-strategy="blue">矢倉</span></div>
+          <div class="player-time-bank" aria-label="青CPUの残り時間">
+            <button type="button" class="cpu-time-card" data-cpu-side="blue" data-cpu-difficulty="easy">
+              <span>初級</span><strong data-cpu-time>無制限</strong>
+              <i class="cpu-time-track" aria-hidden="true"><i data-cpu-time-bar></i></i>
+            </button>
+            <button type="button" class="cpu-time-card" data-cpu-side="blue" data-cpu-difficulty="normal">
+              <span>中級</span><strong data-cpu-time>3:00</strong>
+              <i class="cpu-time-track" aria-hidden="true"><i data-cpu-time-bar></i></i>
+            </button>
+            <button type="button" class="cpu-time-card" data-cpu-side="blue" data-cpu-difficulty="hard">
+              <span>上級</span><strong data-cpu-time>2:00</strong>
+              <i class="cpu-time-track" aria-hidden="true"><i data-cpu-time-bar></i></i>
+            </button>
+            <button type="button" class="cpu-time-card" data-cpu-side="blue" data-cpu-difficulty="expert">
+              <span>最上級</span><strong data-cpu-time>2:00</strong>
+              <i class="cpu-time-track" aria-hidden="true"><i data-cpu-time-bar></i></i>
+            </button>
+          </div>
+        </div>
+        <div id="redCpuControls" class="cpu-strength-block">
+          <div class="player-command-head"><strong>相手CPU強度</strong><span data-cpu-strategy="red">未定</span></div>
+          <div class="player-time-bank" aria-label="赤CPUの残り時間">
+            <div class="cpu-time-card" data-cpu-side="red" data-cpu-difficulty="easy">
+              <span>初級</span><strong data-cpu-time>無制限</strong>
+              <i class="cpu-time-track" aria-hidden="true"><i data-cpu-time-bar></i></i>
+            </div>
+            <div class="cpu-time-card" data-cpu-side="red" data-cpu-difficulty="normal">
+              <span>中級</span><strong data-cpu-time>3:00</strong>
+              <i class="cpu-time-track" aria-hidden="true"><i data-cpu-time-bar></i></i>
+            </div>
+            <div class="cpu-time-card" data-cpu-side="red" data-cpu-difficulty="hard">
+              <span>上級</span><strong data-cpu-time>2:00</strong>
+              <i class="cpu-time-track" aria-hidden="true"><i data-cpu-time-bar></i></i>
+            </div>
+            <div class="cpu-time-card" data-cpu-side="red" data-cpu-difficulty="expert">
+              <span>最上級</span><strong data-cpu-time>2:00</strong>
+              <i class="cpu-time-track" aria-hidden="true"><i data-cpu-time-bar></i></i>
+            </div>
+          </div>
+        </div>
+      </section>
       <div class="controls">
         <label for="schoolSelect">
           対戦相手
           <select id="schoolSelect"></select>
         </label>
-        <label for="difficultySelect">
-          CPU強度
-          <select id="difficultySelect"></select>
-        </label>
-        <button id="spectatorButton" type="button">観戦モード</button>
+        <button id="modeToggleButton" class="mode-toggle start" type="button" hidden>自動操作</button>
         <button id="deckButton" type="button" hidden>編成</button>
-        <button id="restartButton" type="button">再戦</button>
       </div>
     </section>
 
@@ -69,12 +108,12 @@
     </section>
   </main>
 
-  <script src="js/config.js?v=20260909-6"></script>
-  <script src="js/pieces.js?v=20260909-6"></script>
-  <script src="js/board.js?v=20260909-6"></script>
-  <script src="js/rules.js?v=20260909-6"></script>
-  <script src="js/game.js?v=20260909-6"></script>
-  <script src="js/cpu.js?v=20260909-6"></script>
-  <script src="js/main.js?v=20260909-6"></script>
+  <script src="js/config.js?v=20260909-23"></script>
+  <script src="js/pieces.js?v=20260909-23"></script>
+  <script src="js/board.js?v=20260909-23"></script>
+  <script src="js/rules.js?v=20260909-23"></script>
+  <script src="js/game.js?v=20260909-23"></script>
+  <script src="js/cpu.js?v=20260909-25"></script>
+  <script src="js/main.js?v=20260909-26"></script>
 </body>
 </html>

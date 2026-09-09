@@ -239,8 +239,8 @@
     } else if (piece.club === "swim") {
       moves = stepMoves(state, piece, ORTHOGONAL, moveLimitFor(state, piece), { canMove: true, canCapture: true, slide: true });
     } else if (piece.club === "rugby") {
-      moves = stepMoves(state, piece, [[forward, 0], [forward, -1], [forward, 1]], moveLimitFor(state, piece), { canMove: true, canCapture: true, slide: true });
-      moves.push(...stepMoves(state, piece, [[0, -1], [0, 1]], 1, { canMove: true, canCapture: true, slide: false }));
+      const distance = terrainAt(state, piece.row, piece.col) === "ground" ? BOARD_CONFIG.rows - 1 : 2;
+      moves = stepMoves(state, piece, [[forward, 0]], distance, { canMove: true, canCapture: true, slide: true });
     } else if (piece.club === "chemistry") {
       moves = stepMoves(state, piece, ORTHOGONAL, moveLimitFor(state, piece), { canMove: true, canCapture: true, slide: false });
     } else if (piece.club === "broadcast") {
@@ -343,14 +343,13 @@
     }
 
     if (move.type === "attack") {
-      if (move.convert) {
-        const target = move.captureId ? getPiece(next, move.captureId) : pieceAt(next, move.to.row, move.to.col);
-        if (target && target.club !== "president" && target.team !== piece.team) {
-          target.originalTeam = target.originalTeam || target.team;
-          target.team = piece.team;
-        }
+      const target = move.captureId ? getPiece(next, move.captureId) : pieceAt(next, move.to.row, move.to.col);
+      if (!target || target.captured || target.team === piece.team) return next;
+      if (move.convert && target.club !== "president") {
+        target.originalTeam = target.originalTeam || target.team;
+        target.team = piece.team;
       } else {
-        captureTarget(next, piece, move.captureId ? getPiece(next, move.captureId) : pieceAt(next, move.to.row, move.to.col));
+        captureTarget(next, piece, target);
       }
     } else if (move.type !== "drop") {
       captureTarget(next, piece, move.captureId ? getPiece(next, move.captureId) : pieceAt(next, move.to.row, move.to.col));

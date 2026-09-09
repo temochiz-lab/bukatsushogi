@@ -108,10 +108,10 @@
       icon: "🏉",
       role: "charge",
       value: 430,
-      baseMove: 3,
+      baseMove: 2,
       attackRange: 1,
       fieldTerrains: ["ground"],
-      specialText: "前方3方向へ突撃"
+      specialText: "通常は前方2マス、グラウンドでは前方直線"
     },
     chemistry: {
       name: "化学部",
@@ -270,7 +270,7 @@
   for (const [clubKey, club] of Object.entries(CLUBS)) {
     if (clubKey === "president" || clubKey === "home") continue;
     CPU_SCHOOLS[`club-${clubKey}`] = {
-      name: `${club.name}単体`,
+      name: club.name,
       frontClub: clubKey,
       weights: { ...CPU_SCHOOLS.normal.weights }
     };
@@ -279,8 +279,8 @@
   const CPU_DIFFICULTIES = {
     easy: { name: "初級", stars: "★", algorithm: "simple", choiceWindow: 6, blunderRate: 0.18 },
     normal: { name: "中級", stars: "★★", algorithm: "simple", choiceWindow: 2, blunderRate: 0.03 },
-    hard: { name: "上級", stars: "★★★", algorithm: "minimax", depth: 2, blunderRate: 0 },
-    expert: { name: "最上級", stars: "★★★★", algorithm: "minimax", depth: 3, blunderRate: 0 }
+    hard: { name: "上級", stars: "★★★", algorithm: "minimax", depth: 2, maxThinkMs: 4500, blunderRate: 0 },
+    expert: { name: "最上級", stars: "★★★★", algorithm: "minimax", depth: 3, maxThinkMs: 9000, blunderRate: 0 }
   };
 
   global.BukatsuConfig = { BOARD_CONFIG, TERRAIN, CLUBS, CPU_SCHOOLS, CPU_DIFFICULTIES };

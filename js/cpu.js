@@ -1,8 +1,14 @@
 (function (global) {
   "use strict";
 
-  const { CLUBS } = global.BukatsuConfig;
+  const { BOARD_CONFIG, CLUBS } = global.BukatsuConfig;
   const Rules = global.BukatsuRules;
+  const YIELD_INTERVAL_MS = 12;
+  const DEFENSIVE_CLUBS = new Set(["home", "kendo", "judo", "swim"]);
+  const ASSAULT_CLUBS = new Set(["track", "rugby", "soccer", "basketball", "volleyball", "kendo"]);
+  const RANGED_CLUBS = new Set(["archery", "baseball", "physics"]);
+  const FORMATION_STRATEGIES = new Set(["yagura", "bougin", "shikenbisha", "anaguma"]);
+  const SEARCH_TIMEOUT = {};
 
   function findPresident(state, side) {
     return state.pieces.find((piece) => piece.team === side && piece.club === "president" && !piece.captured);
@@ -16,6 +22,88 @@
     const terrain = Rules.terrainAt(state, piece.row, piece.col);
     const bonus = CLUBS[piece.club].terrainBonus && CLUBS[piece.club].terrainBonus[terrain];
     return bonus ? 24 : 0;
+  }
+
+  function strategyPositionScore(position, side, strategy, piece = null) {
+    if (!position || !strategy) return 0;
+    const maxRow = BOARD_CONFIG.rows - 1;
+    const maxCol = BOARD_CONFIG.cols - 1;
+    const homeRow = side === "blue" ? maxRow : 0;
+    const supportRow = side === "blue" ? maxRow - 1 : 1;
+    const progress = side === "blue" ? maxRow - position.row : position.row;
+    const club = piece ? piece.club : null;
+    if (strategy === "advance" || strategy === "charge") return progress * 12;
+    if (strategy === "left") return (maxCol - position.col) * 8;
+    if (strategy === "right") return position.col * 8;
+    if (strategy === "yagura") {
+      if (club === "president") return 180 - Math.abs(position.row - homeRow) * 34 - Math.abs(position.col - 4) * 24;
+      if (DEFENSIVE_CLUBS.has(club)) return 120 - Math.abs(position.row - supportRow) * 18 - Math.abs(position.col - 4) * 14;
+      return progress * 7 - Math.abs(position.col - 4) * 4;
+    }
+    if (strategy === "bougin") {
+      const attackFile = side === "blue" ? 1 : maxCol - 1;
+      if (club === "president") return 80 - Math.abs(position.row - homeRow) * 24;
+      const fileBonus = 100 - Math.abs(position.col - attackFile) * (ASSAULT_CLUBS.has(club) ? 22 : 8);
+      return fileBonus + progress * (ASSAULT_CLUBS.has(club) ? 18 : 7);
+    }
+    if (strategy === "shikenbisha") {
+      const fourthFile = side === "blue" ? 3 : maxCol - 3;
+      if (club === "president") return 90 - Math.abs(position.row - homeRow) * 26;
+      const fileBonus = 100 - Math.abs(position.col - fourthFile) * (RANGED_CLUBS.has(club) ? 26 : 9);
+      return fileBonus + progress * (RANGED_CLUBS.has(club) ? 12 : 7);
+    }
+    if (strategy === "anaguma") {
+      const cornerCol = side === "blue" ? maxCol : 0;
+      const cornerDistance = Math.abs(position.row - homeRow) + Math.abs(position.col - cornerCol);
+      if (club === "president") return 240 - cornerDistance * 38;
+      if (DEFENSIVE_CLUBS.has(club)) {
+        const guardDistance = Math.abs(position.row - supportRow) + Math.abs(position.col - cornerCol);
+        return 150 - guardDistance * 22;
+      }
+      return progress * 6;
+    }
+    return 0;
+  }
+
+  function isStrategyComplete(state, side, strategy) {
+    if (!FORMATION_STRATEGIES.has(strategy)) return false;
+    const pieces = state.pieces.filter((piece) => piece.team === side && !piece.captured);
+    const ownMoves = state.history.filter((entry) => entry.side === side).length;
+    if (ownMoves >= 12) return true;
+    if (ownMoves < 4) return false;
+
+    const maxRow = BOARD_CONFIG.rows - 1;
+    const maxCol = BOARD_CONFIG.cols - 1;
+    const homeRow = side === "blue" ? maxRow : 0;
+    const president = pieces.find((piece) => piece.club === "president");
+    if (!president) return true;
+
+    if (strategy === "yagura") {
+      const guards = pieces.filter((piece) => DEFENSIVE_CLUBS.has(piece.club)
+        && Math.abs(piece.row - homeRow) + Math.abs(piece.col - 4) <= 3).length;
+      return president.row === homeRow && Math.abs(president.col - 4) <= 1 && guards >= 3;
+    }
+    if (strategy === "anaguma") {
+      const cornerCol = side === "blue" ? maxCol : 0;
+      const guards = pieces.filter((piece) => DEFENSIVE_CLUBS.has(piece.club)
+        && Math.abs(piece.row - homeRow) + Math.abs(piece.col - cornerCol) <= 3).length;
+      return Math.abs(president.row - homeRow) + Math.abs(president.col - cornerCol) <= 1 && guards >= 2;
+    }
+    if (strategy === "bougin") {
+      const attackFile = side === "blue" ? 1 : maxCol - 1;
+      const attackers = pieces.filter((piece) => ASSAULT_CLUBS.has(piece.club));
+      const required = Math.min(2, attackers.length);
+      const formed = attackers.filter((piece) => Math.abs(piece.col - attackFile) <= 1).length;
+      const advanced = attackers.some((piece) => (side === "blue" ? maxRow - piece.row : piece.row) >= 3);
+      return required > 0 && formed >= required && advanced;
+    }
+
+    const fourthFile = side === "blue" ? 3 : maxCol - 3;
+    const ranged = pieces.filter((piece) => RANGED_CLUBS.has(piece.club));
+    const formationPieces = ranged.length > 0 ? ranged : pieces.filter((piece) => piece.club !== "president");
+    const required = Math.min(2, formationPieces.length);
+    const formed = formationPieces.filter((piece) => Math.abs(piece.col - fourthFile) <= 1).length;
+    return required > 0 && formed >= required;
   }
 
   function evaluateBoard(state, side, school) {
@@ -33,6 +121,7 @@
       const sign = piece.team === side ? 1 : -1;
       score += sign * CLUBS[piece.club].value * school.weights.material;
       score += sign * terrainScore(state, piece) * school.weights.terrain;
+      if (piece.team === side) score += strategyPositionScore(piece, side, school.strategy, piece);
     }
 
     if (ownPresident && enemyPresident) {
@@ -49,14 +138,41 @@
   }
 
   function orderedMoves(state, side) {
-    return Rules.generateLegalMoves(state, side).sort((a, b) => {
+    return checkResponseMoves(state, side, Rules.generateLegalMoves(state, side)).sort((a, b) => {
       const av = a.captureId ? CLUBS[Rules.getPiece(state, a.captureId).club].value : 0;
       const bv = b.captureId ? CLUBS[Rules.getPiece(state, b.captureId).club].value : 0;
       return bv - av;
     });
   }
 
-  function simpleMoveScore(state, move, side) {
+  function checkResponseMoves(state, side, moves) {
+    if (!Rules.isSideInCheck(state, side)) return moves;
+    const responses = moves.filter((move) => !Rules.isSideInCheck(Rules.applyMove(state, move), side));
+    return responses.length > 0 ? responses : moves;
+  }
+
+  function immediateWinningMove(state, side, moves = Rules.generateLegalMoves(state, side)) {
+    return moves.find((move) => {
+      const target = move.captureId ? Rules.getPiece(state, move.captureId) : null;
+      return target && target.team !== side && target.club === "president";
+    }) || null;
+  }
+
+  function doomedPresidentMove(state, side, moves = Rules.generateLegalMoves(state, side)) {
+    if (!Rules.isSideInCheck(state, side)) return null;
+    const responses = moves.filter((move) => !Rules.isSideInCheck(Rules.applyMove(state, move), side));
+    if (responses.length > 0) return null;
+    const president = findPresident(state, side);
+    return president ? moves.find((move) => move.pieceId === president.id) || null : null;
+  }
+
+  function allOutChargeMoves(moves, side) {
+    const forward = side === "blue" ? -1 : 1;
+    const advancing = moves.filter((move) => move.from && Math.sign(move.to.row - move.from.row) === forward);
+    return advancing.length > 0 ? advancing : moves;
+  }
+
+  function simpleMoveScore(state, move, side, school) {
     const piece = Rules.getPiece(state, move.pieceId);
     const target = move.captureId ? Rules.getPiece(state, move.captureId) : null;
     const enemy = side === "blue" ? "red" : "blue";
@@ -73,12 +189,25 @@
       score += 80;
     }
     if (enemyPresident && move.to) score += (18 - distance(move.to, enemyPresident)) * 3;
+    if ((move.type === "move" || move.type === "drop" || move.convert) && move.to) {
+      const destinationScore = strategyPositionScore(move.to, side, school.strategy, piece);
+      const originScore = move.type === "drop" ? 0 : strategyPositionScore(piece, side, school.strategy, piece);
+      score += destinationScore - originScore;
+    }
     return score;
   }
 
   function chooseSimpleMove(state, side, school) {
-    const moves = Rules.generateLegalMoves(state, side)
-      .map((move) => ({ move, score: simpleMoveScore(state, move, side) }))
+    const checked = Rules.isSideInCheck(state, side);
+    const legalMoves = Rules.generateLegalMoves(state, side);
+    const winningMove = immediateWinningMove(state, side, legalMoves);
+    if (winningMove) return winningMove;
+    const doomedMove = doomedPresidentMove(state, side, legalMoves);
+    if (doomedMove) return doomedMove;
+    let candidates = checkResponseMoves(state, side, legalMoves);
+    if (school.allOutCharge && !checked) candidates = allOutChargeMoves(candidates, side);
+    const moves = candidates
+      .map((move) => ({ move, score: simpleMoveScore(state, move, side, school) }))
       .sort((a, b) => b.score - a.score);
     if (moves.length === 0) return null;
     const windowSize = Math.min(moves.length, school.choiceWindow || 1);
@@ -126,15 +255,97 @@
     return { score: bestScore, move: bestMove };
   }
 
+  function createYieldController() {
+    let lastYieldAt = performance.now();
+    return async function yieldToBrowser() {
+      if (performance.now() - lastYieldAt < YIELD_INTERVAL_MS) return;
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      lastYieldAt = performance.now();
+    };
+  }
+
+  async function minimaxAsync(state, depth, alpha, beta, maximizing, side, school, yieldToBrowser, deadline = Infinity) {
+    await yieldToBrowser();
+    if (performance.now() >= deadline) throw SEARCH_TIMEOUT;
+    const winner = Rules.getWinner(state);
+    if (depth === 0 || winner) {
+      return { score: evaluateBoard(state, side, school), move: null };
+    }
+
+    const currentSide = maximizing ? side : side === "blue" ? "red" : "blue";
+    const moves = orderedMoves(state, currentSide);
+    if (moves.length === 0) {
+      return { score: evaluateBoard(state, side, school), move: null };
+    }
+
+    let bestMove = moves[0];
+    if (maximizing) {
+      let bestScore = -Infinity;
+      for (const move of moves) {
+        const result = await minimaxAsync(Rules.applyMove(state, move), depth - 1, alpha, beta, false, side, school, yieldToBrowser, deadline);
+        if (result.score > bestScore) {
+          bestScore = result.score;
+          bestMove = move;
+        }
+        alpha = Math.max(alpha, bestScore);
+        if (beta <= alpha) break;
+      }
+      return { score: bestScore, move: bestMove };
+    }
+
+    let bestScore = Infinity;
+    for (const move of moves) {
+      const result = await minimaxAsync(Rules.applyMove(state, move), depth - 1, alpha, beta, true, side, school, yieldToBrowser, deadline);
+      if (result.score < bestScore) {
+        bestScore = result.score;
+        bestMove = move;
+      }
+      beta = Math.min(beta, bestScore);
+      if (beta <= alpha) break;
+    }
+    return { score: bestScore, move: bestMove };
+  }
+
   function chooseCpuMove(state, side, school) {
     if (school.algorithm === "simple") return chooseSimpleMove(state, side, school);
     const moves = orderedMoves(state, side);
     if (moves.length === 0) return null;
+    const winningMove = immediateWinningMove(state, side, moves);
+    if (winningMove) return winningMove;
+    const doomedMove = doomedPresidentMove(state, side, moves);
+    if (doomedMove) return doomedMove;
     if (Math.random() < school.blunderRate) {
       return moves[Math.floor(Math.random() * Math.min(moves.length, 8))];
     }
     return minimax(state, school.depth, -Infinity, Infinity, true, side, school).move;
   }
 
-  global.BukatsuCpu = { evaluateBoard, minimax, chooseCpuMove, chooseSimpleMove };
+  async function chooseCpuMoveAsync(state, side, school) {
+    if (school.algorithm === "simple") return chooseSimpleMove(state, side, school);
+    const deadline = performance.now() + (school.maxThinkMs || 9000);
+    const moves = orderedMoves(state, side);
+    if (moves.length === 0) return null;
+    const winningMove = immediateWinningMove(state, side, moves);
+    if (winningMove) return winningMove;
+    const doomedMove = doomedPresidentMove(state, side, moves);
+    if (doomedMove) return doomedMove;
+    if (Math.random() < school.blunderRate) {
+      return moves[Math.floor(Math.random() * Math.min(moves.length, 8))];
+    }
+    const yieldToBrowser = createYieldController();
+    let bestMove = moves[0];
+    for (let depth = 1; depth <= school.depth; depth += 1) {
+      try {
+        const result = await minimaxAsync(state, depth, -Infinity, Infinity, true, side, school, yieldToBrowser, deadline);
+        if (result.move) bestMove = result.move;
+      } catch (error) {
+        if (error !== SEARCH_TIMEOUT) throw error;
+        break;
+      }
+      if (performance.now() >= deadline) break;
+    }
+    return bestMove;
+  }
+
+  global.BukatsuCpu = { evaluateBoard, minimax, chooseCpuMove, chooseCpuMoveAsync, chooseSimpleMove, strategyPositionScore, checkResponseMoves, allOutChargeMoves, immediateWinningMove, doomedPresidentMove, isStrategyComplete };
 })(globalThis);

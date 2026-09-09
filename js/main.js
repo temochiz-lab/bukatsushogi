@@ -20,10 +20,13 @@
   const blueCapturedTray = document.getElementById("blueCapturedTray");
   const redCapturedTray = document.getElementById("redCapturedTray");
   const moveHistory = document.getElementById("moveHistory");
-  const spectatorButton = document.getElementById("spectatorButton");
-  const restartButton = document.getElementById("restartButton");
   const schoolSelect = document.getElementById("schoolSelect");
-  const difficultySelect = document.getElementById("difficultySelect");
+  const modeToggleButton = document.getElementById("modeToggleButton");
+  const cpuCommandPanel = document.getElementById("cpuCommandPanel");
+  const blueCpuControls = document.getElementById("blueCpuControls");
+  const cpuStrategyLabels = [...document.querySelectorAll("[data-cpu-strategy]")];
+  const cpuDifficultyCards = [...document.querySelectorAll("[data-cpu-difficulty]")];
+  const cpuDifficultyButtons = [...document.querySelectorAll("button[data-cpu-difficulty]")];
   const clubLegend = document.getElementById("clubLegend");
   const deckSetup = document.getElementById("deckSetup");
   const deckButton = document.getElementById("deckButton");
@@ -51,9 +54,44 @@
   let winnerSoundPlayedFor = null;
   let resultDialogShownFor = null;
   let replayTimerId = null;
+  let replayActive = false;
   let replayHistory = [];
   let replayIndex = 0;
   let resultFadeTimerId = null;
+  let cpuRunVersion = 0;
+  let playerStrategy = "yagura";
+
+  const CPU_TIME_LIMITS = {
+    easy: Infinity,
+    normal: 3 * 60 * 1000,
+    hard: 2 * 60 * 1000,
+    expert: 2 * 60 * 1000
+  };
+  const CPU_STRATEGIES = ["yagura", "bougin", "shikenbisha", "anaguma", "left", "right", "charge"];
+  const STRATEGY_LABELS = {
+    yagura: "矢倉",
+    bougin: "棒銀",
+    shikenbisha: "四間飛車",
+    anaguma: "穴熊",
+    left: "左寄せ",
+    right: "右寄せ",
+    charge: "突撃"
+  };
+  const STRATEGY_HINTS = {
+    yagura: "会長を中央後方で守り、守備駒で囲う",
+    bougin: "機動駒を攻撃筋へ集めて前進する",
+    shikenbisha: "遠隔駒を四筋へ集めて攻める",
+    anaguma: "会長を自陣の角へ寄せて固める",
+    left: "全軍を盤面左側へ寄せる",
+    right: "全軍を盤面右側へ寄せる",
+    charge: "準備せず全軍で前進する"
+  };
+  const cpuStrategies = { blue: playerStrategy, red: "yagura" };
+  const cpuStrategyCompleted = { blue: false, red: false };
+  const cpuControlState = {
+    blue: { difficultyKey: "hard", remainingMs: { ...CPU_TIME_LIMITS }, clockUpdatedAt: performance.now() },
+    red: { difficultyKey: "hard", remainingMs: { ...CPU_TIME_LIMITS }, clockUpdatedAt: performance.now() }
+  };
 
   const SOUND_FILES = {
     start: "和太鼓でドドン.mp3",
@@ -96,9 +134,136 @@
     return CPU_SCHOOLS[schoolSelect.value] || CPU_SCHOOLS.normal;
   }
 
-  function cpuConfig() {
-    const difficulty = CPU_DIFFICULTIES[difficultySelect.value] || CPU_DIFFICULTIES.normal;
-    return { ...difficulty, weights: schoolConfig().weights };
+  function cpuConfig(side) {
+    const difficultyKey = activeCpuDifficultyKey(side);
+    const difficulty = CPU_DIFFICULTIES[difficultyKey] || CPU_DIFFICULTIES.easy;
+    const weights = side === "blue" ? CPU_SCHOOLS.normal.weights : schoolConfig().weights;
+    if (!cpuStrategyCompleted[side] && Cpu.isStrategyComplete(state, side, cpuStrategies[side])) {
+      cpuStrategyCompleted[side] = true;
+    }
+    const charging = cpuStrategyCompleted[side] || cpuStrategies[side] === "charge";
+    return {
+      ...difficulty,
+      weights,
+      strategy: difficultyKey === "easy" || charging ? "advance" : cpuStrategies[side],
+      allOutCharge: difficultyKey === "easy" || charging
+    };
+  }
+
+  function activeCpuDifficultyKey(side) {
+    const control = cpuControlState[side];
+    if (side === "red" && setupComplete && state.turn === "red" && Rules.isSideInCheck(state, "red") && control.remainingMs.expert > 0) {
+      return "expert";
+    }
+    return control.difficultyKey;
+  }
+
+  function formatCpuTime(milliseconds) {
+    if (!Number.isFinite(milliseconds)) return "無制限";
+    const seconds = Math.max(0, Math.ceil(milliseconds / 1000));
+    return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
+  }
+
+  function resetCpuControls() {
+    cpuControlState.blue.difficultyKey = "hard";
+    cpuControlState.red.difficultyKey = "hard";
+    for (const control of Object.values(cpuControlState)) {
+      control.remainingMs = { ...CPU_TIME_LIMITS };
+      control.clockUpdatedAt = performance.now();
+    }
+  }
+
+  function chooseCpuStrategies() {
+    cpuStrategies.blue = playerStrategy;
+    cpuStrategies.red = CPU_STRATEGIES[Math.floor(Math.random() * CPU_STRATEGIES.length)];
+    cpuStrategyCompleted.blue = false;
+    cpuStrategyCompleted.red = false;
+  }
+
+  function cpuClockIsRunning(side) {
+    return setupComplete && (side === "red" || spectatorMode) && !Rules.isFinished(state) && !replayActive;
+  }
+
+  function restartThinkingCpu(side) {
+    if (!cpuBusy || state.turn !== side) return;
+    cpuRunVersion += 1;
+    cpuBusy = false;
+    if (spectatorMode) {
+      scheduleSpectatorTurn(80);
+    } else if (side === "red") {
+      window.setTimeout(() => runAutoTurn("red"), 80);
+    }
+  }
+
+  function chargeCpuTime(side) {
+    const control = cpuControlState[side];
+    const now = performance.now();
+    const elapsed = now - control.clockUpdatedAt;
+    control.clockUpdatedAt = now;
+    const activeDifficultyKey = activeCpuDifficultyKey(side);
+    if (!cpuClockIsRunning(side) || activeDifficultyKey === "easy") return;
+
+    control.remainingMs[activeDifficultyKey] = Math.max(0, control.remainingMs[activeDifficultyKey] - elapsed);
+    if (control.remainingMs[activeDifficultyKey] === 0) {
+      if (activeDifficultyKey === "hard") {
+        control.difficultyKey = "normal";
+      } else if (!(side === "red" && activeDifficultyKey === "expert")) {
+        control.difficultyKey = "easy";
+      }
+      restartThinkingCpu(side);
+    }
+  }
+
+  function renderCpuCommandPanel() {
+    document.body.classList.toggle("replay-active", replayActive);
+    const visible = !Rules.isFinished(state) && !replayActive;
+    cpuCommandPanel.hidden = !visible;
+    modeToggleButton.hidden = !setupComplete || !visible;
+    if (!visible) return;
+
+    const showBlueControls = setupComplete && spectatorMode;
+    blueCpuControls.hidden = !showBlueControls;
+
+    for (const label of cpuStrategyLabels) {
+      const side = label.dataset.cpuStrategy;
+      if (!setupComplete) {
+        label.textContent = side === "blue" ? STRATEGY_LABELS[playerStrategy] : "未定";
+        continue;
+      }
+      const difficultyKey = activeCpuDifficultyKey(side);
+      const selectedStrategyName = STRATEGY_LABELS[cpuStrategies[side]];
+      const strategyName = difficultyKey === "easy"
+        ? `${selectedStrategyName}→全軍突撃`
+        : cpuStrategyCompleted[side] ? `${selectedStrategyName}→突撃` : selectedStrategyName;
+      label.textContent = strategyName;
+    }
+
+    for (const card of cpuDifficultyCards) {
+      const side = card.dataset.cpuSide;
+      const key = card.dataset.cpuDifficulty;
+      const control = cpuControlState[side];
+      const activeDifficultyKey = activeCpuDifficultyKey(side);
+      const remaining = control.remainingMs[key];
+      const label = card.querySelector("[data-cpu-time]");
+      const bar = card.querySelector("[data-cpu-time-bar]");
+      label.textContent = formatCpuTime(remaining);
+      if ("disabled" in card) card.disabled = key !== "easy" && remaining <= 0;
+      card.classList.toggle("selected", key === activeDifficultyKey);
+      card.classList.toggle("expired", remaining <= 0);
+      if ("disabled" in card) {
+        card.setAttribute("aria-pressed", String(key === activeDifficultyKey));
+      } else {
+        card.setAttribute("aria-current", String(key === activeDifficultyKey));
+      }
+      const sideName = side === "blue" ? "自分CPU" : "相手CPU";
+      card.setAttribute("aria-label", `${sideName} ${CPU_DIFFICULTIES[key].name} 残り${formatCpuTime(remaining)}`);
+      const limit = CPU_TIME_LIMITS[key];
+      bar.style.width = Number.isFinite(limit) ? `${Math.max(0, remaining / limit) * 100}%` : "100%";
+    }
+    modeToggleButton.textContent = spectatorMode ? "手動操作" : "自動操作";
+    modeToggleButton.classList.toggle("start", !spectatorMode);
+    modeToggleButton.classList.toggle("manual", spectatorMode);
+    modeToggleButton.setAttribute("aria-pressed", String(spectatorMode));
   }
 
 
@@ -131,7 +296,7 @@
       kendo: [[-1, -1], [-1, 0], [-1, 1], [0, -1], [0, 1]],
       judo: [[-1, 0], [0, -1], [0, 1], [1, 0]],
       swim: [[-1, 0], [0, -1], [0, 1], [1, 0]],
-      rugby: [[-1, -1], [-1, 0], [-1, 1], [0, -1], [0, 1]],
+      rugby: [[-1, 0], [-2, 0]],
       chemistry: [[-1, 0], [0, -1], [0, 1], [1, 0]],
       broadcast: [[-1, 0], [0, -1], [0, 1], [1, 0]],
       newspaper: [[-1, 0], [0, -1], [0, 1], [1, 0]],
@@ -183,6 +348,7 @@
   }
 
   function resetGameForDeck(newMap = false) {
+    cpuRunVersion += 1;
     if (newMap) mapBoard = global.BukatsuBoard.createBoard();
     const lineup = deckMode === "manual"
       ? global.BukatsuPieces.lineupFromClubKeys(manualDeck)
@@ -196,6 +362,7 @@
   }
 
   function completeDeckSetup(startAsSpectator = false) {
+    chooseCpuStrategies();
     setupComplete = true;
     spectatorMode = startAsSpectator;
     resetGameForDeck();
@@ -283,7 +450,28 @@
       return `<div class="deck-storage-row"><div><strong>${title}</strong><small>${date}</small></div>${action}</div>`;
     }).join("");
     return `<div class="deck-storage"><div class="deck-storage-head"><strong>${storageMode === "save" ? "デッキを保存" : "デッキを読込"}</strong><button type="button" class="text-button" data-storage-action="close">閉じる</button></div>${storageMode === "save" ? `<label class="deck-name-field">デッキ名<input id="deckNameInput" type="text" maxlength="20" value="${escapeHtml(storageDraftName)}" placeholder="例：守備型"></label>` : ""}<div class="deck-storage-list">${rows}</div></div>`;
-  }  function renderDeckSetup() {
+  }
+
+  function strategyPickerHtml() {
+    const buttons = CPU_STRATEGIES.map((strategy) => (
+      `<button type="button" data-player-strategy="${strategy}" aria-pressed="${strategy === playerStrategy}" title="${STRATEGY_HINTS[strategy]}">${STRATEGY_LABELS[strategy]}</button>`
+    )).join("");
+    return `<div class="strategy-picker" role="group" aria-label="自分の作戦">${buttons}</div>`;
+  }
+
+  function bindStrategyPicker() {
+    deckSetup.querySelectorAll("[data-player-strategy]").forEach((button) => {
+      button.addEventListener("click", () => {
+        playerStrategy = button.dataset.playerStrategy;
+        cpuStrategies.blue = playerStrategy;
+        cpuStrategyCompleted.blue = false;
+        renderCpuCommandPanel();
+        renderDeckSetup();
+      });
+    });
+  }
+
+  function renderDeckSetup() {
     deckButton.hidden = true;
     deckButton.disabled = true;
     if (setupComplete) {
@@ -295,13 +483,15 @@
     if (deckStep === "choice") {
       deckSetup.innerHTML = `
         <div class="deck-choice">
-          <div><h2>先手の編成</h2><p>会長と帰宅部は固定。残りの部活を決めて対局を始めます。</p></div>
+          <div class="deck-choice-main"><h2>先手の編成</h2><p>会長と帰宅部は固定。残りの部活を決めて対局を始めます。</p><div class="strategy-select-row"><strong>自分の作戦</strong>${strategyPickerHtml()}</div></div>
           <div class="deck-choice-actions">
-            <button type="button" data-deck-action="auto">自動実行</button>
-            <button type="button" data-deck-action="manual-start">手動実行</button>
-            <button type="button" data-deck-action="manual">編成</button>
+            <span>開始方法</span>
+            <button type="button" class="setup-mode-button auto" data-deck-action="auto">自動操作</button>
+            <button type="button" class="setup-mode-button manual" data-deck-action="manual-start">手動操作</button>
+            <button type="button" class="deck-edit-button" data-deck-action="manual">編成</button>
           </div>
         </div>`;
+      bindStrategyPicker();
       deckSetup.querySelector('[data-deck-action="auto"]').addEventListener("click", () => {
         deckMode = "auto";
         completeDeckSetup(true);
@@ -334,11 +524,14 @@
 
     deckSetup.innerHTML = `
       <div class="deck-builder-head"><div><h2>先手の編成を選ぶ</h2><p>右の部活をドラッグして空き枠へ。会長・帰宅部は固定です。</p></div><div class="deck-builder-head-actions"><button type="button" class="text-button" data-storage-action="save">保存</button><button type="button" class="text-button" data-storage-action="load">読込</button><button type="button" class="text-button" data-deck-action="back">戻る</button></div></div>
+      <div class="strategy-select-row"><strong>自分の作戦</strong>${strategyPickerHtml()}</div>
       <div class="deck-builder">
         <div class="deck-slots"><div class="deck-board-grid"><div class="deck-fixed-piece" style="grid-column:5;grid-row:3"><strong>会長</strong><small>固定</small></div>${slots}<div class="deck-home-line" style="grid-row:1">${Array.from({ length: 9 }, () => `<span class="deck-fixed-home"><strong>帰</strong><small>帰宅部</small></span>`).join("")}</div></div></div>
         <div class="deck-palette"><h3>部活</h3><div class="deck-card-grid">${palette}</div></div>
       </div>
       <div class="deck-action-row"><span>${manualDeck.filter(Boolean).length} / ${global.BukatsuPieces.playerDeckSlots.length}</span><button type="button" data-deck-action="start">空きはランダム補充して決定</button></div>${storageMode ? storagePanelHtml() : ""}`;
+
+    bindStrategyPicker();
 
     deckSetup.querySelector('[data-deck-action="back"]').addEventListener("click", () => {
       deckStep = "choice";
@@ -438,19 +631,9 @@ const clubEntries = Object.entries(CLUBS);
     const clubOptions = entries.filter(([, school]) => school.frontClub).map(([key, school]) => (
       `<option value="${key}">${school.name}</option>`
     )).join("");
-    schoolSelect.innerHTML = `<optgroup label="対戦校">${schoolOptions}</optgroup><optgroup label="単体部活">${clubOptions}</optgroup>`;
+    schoolSelect.innerHTML = `<optgroup label="対戦校">${schoolOptions}</optgroup><optgroup label="部活">${clubOptions}</optgroup>`;
     schoolSelect.value = "normal";
 
-    difficultySelect.innerHTML = Object.entries(CPU_DIFFICULTIES).map(([key, difficulty]) => (
-      `<option value="${key}">${difficulty.name} ${difficulty.stars}</option>`
-    )).join("");
-    difficultySelect.value = "normal";
-  }
-
-  function updateSpectatorButton() {
-    spectatorButton.textContent = spectatorMode ? "手動操作" : "自動実行";
-    spectatorButton.classList.toggle("active", spectatorMode);
-    spectatorButton.setAttribute("aria-pressed", String(spectatorMode));
   }
 
   function renderBoard() {
@@ -560,6 +743,7 @@ const clubEntries = Object.entries(CLUBS);
       window.clearTimeout(replayTimerId);
       replayTimerId = null;
     }
+    replayActive = false;
     replayHistory = [];
     replayIndex = 0;
   }
@@ -590,6 +774,7 @@ const clubEntries = Object.entries(CLUBS);
     state = Game.createGameState(schoolSelect.value, null, mapBoard);
     cpuBusy = false;
     spectatorMode = false;
+    resetCpuControls();
     clearSelection();
     clearMoveTrail();
     renderDeckSetup();
@@ -601,6 +786,7 @@ const clubEntries = Object.entries(CLUBS);
     resultDialog.hidden = true;
     resultDialog.classList.remove("visible");
     if (replayTimerId) window.clearTimeout(replayTimerId);
+    replayActive = true;
     const lineup = deckMode === "manual"
       ? global.BukatsuPieces.lineupFromClubKeys(manualDeck)
       : null;
@@ -617,6 +803,7 @@ const clubEntries = Object.entries(CLUBS);
   function playReplayStep() {
     replayTimerId = null;
     if (replayIndex >= replayHistory.length) {
+      replayActive = false;
       cpuBusy = false;
       render();
       return;
@@ -636,7 +823,7 @@ const clubEntries = Object.entries(CLUBS);
         convert: entry.convert
       };
       state = Rules.applyMove(state, move);
-      if (move.type !== "drop") showMoveTrail(move, entry.side);
+      showMoveTrail(move, entry.side);
     }
     replayIndex += 1;
     render();
@@ -721,7 +908,7 @@ const clubEntries = Object.entries(CLUBS);
   }
 
   function showMoveTrail(move, team) {
-    lastTrail = { from: move.from, to: move.to, team };
+    lastTrail = { from: move.from || move.to, to: move.to, team, drop: move.type === "drop" };
     if (trailTimerId) window.clearTimeout(trailTimerId);
     renderMoveTrail();
     trailTimerId = window.setTimeout(clearMoveTrail, 1000);
@@ -733,8 +920,10 @@ const clubEntries = Object.entries(CLUBS);
       return;
     }
 
-    const fromCell = boardEl.querySelector(`[data-row="${lastTrail.from.row}"][data-col="${lastTrail.from.col}"]`);
     const toCell = boardEl.querySelector(`[data-row="${lastTrail.to.row}"][data-col="${lastTrail.to.col}"]`);
+    const fromCell = lastTrail.drop
+      ? toCell
+      : boardEl.querySelector(`[data-row="${lastTrail.from.row}"][data-col="${lastTrail.from.col}"]`);
     if (!fromCell || !toCell) {
       moveTrail.classList.remove("visible");
       return;
@@ -744,9 +933,18 @@ const clubEntries = Object.entries(CLUBS);
     const fromRect = fromCell.getBoundingClientRect();
     const toRect = toCell.getBoundingClientRect();
     const fromX = fromRect.left - wrapRect.left + fromRect.width / 2;
-    const fromY = fromRect.top - wrapRect.top + fromRect.height / 2;
+    const dropFromBottom = lastTrail.team !== "red";
+    const fromY = lastTrail.drop
+      ? (dropFromBottom
+        ? fromRect.bottom - wrapRect.top - Math.max(8, fromRect.height * 0.16)
+        : fromRect.top - wrapRect.top + Math.max(8, fromRect.height * 0.16))
+      : fromRect.top - wrapRect.top + fromRect.height / 2;
     const toX = toRect.left - wrapRect.left + toRect.width / 2;
-    const toY = toRect.top - wrapRect.top + toRect.height / 2;
+    const toY = lastTrail.drop
+      ? (dropFromBottom
+        ? toRect.top - wrapRect.top + Math.max(8, toRect.height * 0.16)
+        : toRect.bottom - wrapRect.top - Math.max(8, toRect.height * 0.16))
+      : toRect.top - wrapRect.top + toRect.height / 2;
     const dx = toX - fromX;
     const dy = toY - fromY;
     const length = Math.max(0, Math.hypot(dx, dy) - 18);
@@ -779,6 +977,8 @@ const clubEntries = Object.entries(CLUBS);
   }
 
   function render() {
+    chargeCpuTime("blue");
+    chargeCpuTime("red");
     state.board = global.BukatsuBoard.hydrateBoardPieces(state.board, state.pieces);
     renderBoard();
     renderStatus();
@@ -787,7 +987,7 @@ const clubEntries = Object.entries(CLUBS);
     renderHistory();
     renderMoveTrail();
     renderCheckBanner();
-    updateSpectatorButton();
+    renderCpuCommandPanel();
   }
 
   function selectPiece(piece) {
@@ -816,7 +1016,7 @@ const clubEntries = Object.entries(CLUBS);
     const winner = Rules.getWinner(state);
     clearSelection();
     render();
-    if (move.type !== "drop") showMoveTrail(move, movingTeam);
+    showMoveTrail(move, movingTeam);
     playMoveSound(move, winner);
     if (!Rules.isFinished(state) && state.turn === "red") {
       runAutoTurn("red");
@@ -861,23 +1061,36 @@ const clubEntries = Object.entries(CLUBS);
 
   function runAutoTurn(side) {
     if (Rules.isFinished(state) || state.turn !== side) return;
+    const runVersion = ++cpuRunVersion;
     cpuBusy = true;
     render();
     clearAutoTimer();
-    autoTimerId = window.setTimeout(() => {
+    autoTimerId = window.setTimeout(async () => {
       autoTimerId = null;
-      if (Rules.isFinished(state) || state.turn !== side) {
+      if (runVersion !== cpuRunVersion || Rules.isFinished(state) || state.turn !== side) {
         cpuBusy = false;
         render();
         return;
       }
-      const move = Cpu.chooseCpuMove(state, side, cpuConfig());
+      const thinkingState = state;
+      let move;
+      try {
+        move = await Cpu.chooseCpuMoveAsync(thinkingState, side, cpuConfig(side));
+      } catch (error) {
+        if (runVersion === cpuRunVersion) {
+          cpuBusy = false;
+          console.error(error);
+          render();
+        }
+        return;
+      }
+      if (runVersion !== cpuRunVersion || state !== thinkingState || Rules.isFinished(state) || state.turn !== side) return;
       if (move) {
         const piece = Rules.getPiece(state, move.pieceId);
         const movingTeam = move.side || (piece ? piece.team : side);
         state = Rules.applyMove(state, move);
         const winner = Rules.getWinner(state);
-        if (move.type !== "drop") showMoveTrail(move, movingTeam);
+        showMoveTrail(move, movingTeam);
         playMoveSound(move, winner);
       } else {
         state.turn = side === "blue" ? "red" : "blue";
@@ -892,59 +1105,68 @@ const clubEntries = Object.entries(CLUBS);
   }
 
   function setSpectatorMode(enabled) {
-        if (!setupComplete) return;
+    if (!setupComplete || Rules.isFinished(state) || spectatorMode === enabled) return;
+    chargeCpuTime("blue");
+    chargeCpuTime("red");
+    cpuRunVersion += 1;
+    clearAutoTimer();
+    cpuBusy = false;
     spectatorMode = enabled;
+    const now = performance.now();
+    cpuControlState.blue.clockUpdatedAt = now;
+    cpuControlState.red.clockUpdatedAt = now;
     clearSelection();
-    if (!enabled) {
-      clearAutoTimer();
-      cpuBusy = false;
-    }
     render();
-    if (enabled) {
-      scheduleSpectatorTurn(260);
-    } else if (!Rules.isFinished(state) && state.turn === "red") {
+
+    if (spectatorMode) {
+      scheduleSpectatorTurn(80);
+    } else if (state.turn === "red") {
       runAutoTurn("red");
     }
   }
 
-  restartButton.addEventListener("click", () => {
-    if (!setupComplete) return;
-    resetGameForDeck(true);
-    render();
-    playSound("start");
-    if (spectatorMode) scheduleSpectatorTurn(360);
-  });
-
   schoolSelect.addEventListener("change", () => {
     if (!setupComplete) return;
+    resetCpuControls();
+    chooseCpuStrategies();
     resetGameForDeck(true);
     render();
     if (spectatorMode) scheduleSpectatorTurn(260);
   });
 
-  difficultySelect.addEventListener("change", () => {
-    if (!setupComplete) return;
-    cpuBusy = false;
-    clearAutoTimer();
-    render();
-    if (spectatorMode) {
-      scheduleSpectatorTurn(260);
-    } else if (!Rules.isFinished(state) && state.turn === "red") {
-      runAutoTurn("red");
-    }
-  });
+  for (const button of cpuDifficultyButtons) {
+    button.addEventListener("click", () => {
+      const side = button.dataset.cpuSide;
+      const control = cpuControlState[side];
+      chargeCpuTime(side);
+      const difficultyKey = button.dataset.cpuDifficulty;
+      const nextDifficultyKey = difficultyKey === "easy" || control.remainingMs[difficultyKey] > 0
+        ? difficultyKey
+        : "easy";
+      const changed = control.difficultyKey !== nextDifficultyKey;
+      control.difficultyKey = nextDifficultyKey;
+      control.clockUpdatedAt = performance.now();
+      if (changed) restartThinkingCpu(side);
+      renderCpuCommandPanel();
+    });
+  }
 
-  deckButton.addEventListener("click", openDeckSetup);
-
-  spectatorButton.addEventListener("click", () => {
+  modeToggleButton.addEventListener("click", () => {
     setSpectatorMode(!spectatorMode);
   });
+
+  window.setInterval(() => {
+    chargeCpuTime("blue");
+    chargeCpuTime("red");
+    renderCpuCommandPanel();
+  }, 250);
+
+  deckButton.addEventListener("click", openDeckSetup);
 
   resultDialog.querySelector('[data-result-action="new"]').addEventListener("click", startNewGame);
   resultDialog.querySelector('[data-result-action="replay"]').addEventListener("click", startReplay);
   renderSchoolOptions();
   renderLegends();
   renderDeckSetup();
-  updateSpectatorButton();
   render();
 })(globalThis);
