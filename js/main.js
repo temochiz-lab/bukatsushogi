@@ -465,9 +465,31 @@
   }
 
   function selectedPlayerLineup() {
-    return deckMode === "manual"
-      ? global.BukatsuPieces.lineupFromClubKeys(manualDeck)
-      : global.BukatsuPieces.lineupForSchool(playerSchoolKey);
+    if (deckMode !== "manual") return global.BukatsuPieces.lineupForSchool(playerSchoolKey);
+    const lineup = global.BukatsuPieces.lineupFromClubKeys(manualDeck);
+    lineup.frontClub = global.BukatsuPieces.lineupForSchool(playerSchoolKey).frontClub;
+    return lineup;
+  }
+
+  function deckClubKeysForSchool(schoolKey) {
+    const lineup = global.BukatsuPieces.lineupForSchool(schoolKey);
+    return global.BukatsuPieces.playerDeckSlots.map((slot) => {
+      const line = slot.line === "backLine" ? lineup.backLine : lineup.middleLine;
+      return line.find(([, col]) => col === slot.col)?.[0] || null;
+    });
+  }
+
+  function bindPlayerSchoolSelect(manualMode = false) {
+    const select = deckSetup.querySelector("[data-player-school]");
+    if (!select) return;
+    select.addEventListener("change", (event) => {
+      playerSchoolKey = event.currentTarget.value;
+      deckMode = manualMode ? "manual" : "preset";
+      if (manualMode) manualDeck = deckClubKeysForSchool(playerSchoolKey);
+      resetGameForDeck();
+      renderDeckSetup();
+      render();
+    });
   }
 
   function bindStrategyPicker() {
@@ -503,12 +525,7 @@
           </div>
         </div>`;
       bindStrategyPicker();
-      deckSetup.querySelector("[data-player-school]").addEventListener("change", (event) => {
-        playerSchoolKey = event.currentTarget.value;
-        deckMode = "preset";
-        resetGameForDeck();
-        render();
-      });
+      bindPlayerSchoolSelect();
       deckSetup.querySelector('[data-deck-action="auto"]').addEventListener("click", () => {
         deckMode = "preset";
         completeDeckSetup(true);
@@ -520,7 +537,7 @@
       deckSetup.querySelector('[data-deck-action="manual"]').addEventListener("click", () => {
         deckMode = "manual";
         deckStep = "manual";
-        manualDeck = Array(global.BukatsuPieces.playerDeckSlots.length).fill(null);
+        manualDeck = deckClubKeysForSchool(playerSchoolKey);
         selectedDeckClub = null;
         renderDeckSetup();
       });
@@ -538,17 +555,19 @@
       const used = manualDeck.includes(key);
       return `<button type="button" class="deck-card${used ? " used" : ""}${selectedDeckClub === key ? " selected" : ""}" draggable="${!used}" data-deck-card="${key}"${used ? " disabled" : ""}><span class="club-chip">${club.shortName}</span><span class="deck-card-name">${club.name}</span><span class="deck-card-icon">${movementDiagram(key)}</span></button>`;
     }).join("");
+    const frontClub = CLUBS[global.BukatsuPieces.lineupForSchool(playerSchoolKey).frontClub];
 
     deckSetup.innerHTML = `
       <div class="deck-builder-head"><div><h2>先手の編成を選ぶ</h2><p>右の部活をドラッグして空き枠へ。会長・帰宅部は固定です。</p></div><div class="deck-builder-head-actions"><button type="button" class="text-button" data-storage-action="save">保存</button><button type="button" class="text-button" data-storage-action="load">読込</button><button type="button" class="text-button" data-deck-action="back">戻る</button></div></div>
-      <div class="strategy-select-row"><strong>自分の作戦</strong>${strategyPickerHtml()}</div>
+      <div class="player-setup-row"><label class="player-lineup-select">配置のひな型<select data-player-school>${schoolOptionsHtml(playerSchoolKey, "学科")}</select></label><div class="strategy-select-row"><strong>自分の作戦</strong>${strategyPickerHtml()}</div></div>
       <div class="deck-builder">
-        <div class="deck-slots"><div class="deck-board-grid"><div class="deck-fixed-piece" style="grid-column:5;grid-row:3"><strong>会長</strong><small>固定</small></div>${slots}<div class="deck-home-line" style="grid-row:1">${Array.from({ length: 9 }, () => `<span class="deck-fixed-home"><strong>帰</strong><small>帰宅部</small></span>`).join("")}</div></div></div>
+        <div class="deck-slots"><div class="deck-board-grid"><div class="deck-fixed-piece" style="grid-column:5;grid-row:3"><strong>会長</strong><small>固定</small></div>${slots}<div class="deck-home-line" style="grid-row:1">${Array.from({ length: 9 }, () => `<span class="deck-fixed-home"><strong>${frontClub.shortName}</strong><small>${frontClub.name}</small></span>`).join("")}</div></div></div>
         <div class="deck-palette"><h3>部活</h3><div class="deck-card-grid">${palette}</div></div>
       </div>
       <div class="deck-action-row"><span>${manualDeck.filter(Boolean).length} / ${global.BukatsuPieces.playerDeckSlots.length}</span><button type="button" data-deck-action="start">空きはランダム補充して決定</button></div>${storageMode ? storagePanelHtml() : ""}`;
 
     bindStrategyPicker();
+    bindPlayerSchoolSelect(true);
 
     deckSetup.querySelector('[data-deck-action="back"]').addEventListener("click", () => {
       deckStep = "choice";
