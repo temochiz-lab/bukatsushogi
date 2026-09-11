@@ -512,6 +512,13 @@ button {
   background: #d8cfbd;
 }
 
+.build-info {
+  padding: 8px 12px 12px;
+  color: #4b4b4b;
+  font-size: 12px;
+  text-align: center;
+}
+
 .board::after {
   content: "";
   position: absolute;
