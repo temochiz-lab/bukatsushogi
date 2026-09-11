@@ -32,6 +32,7 @@
   const deckButton = document.getElementById("deckButton");
 
   let playerSchoolKey = "normal";
+  let opponentSchoolKey = "normal";
   let state = Game.createGameState("normal", global.BukatsuPieces.lineupForSchool(playerSchoolKey));
   let mapBoard = state.board.map(({ pieceId, ...cell }) => cell);
   let setupComplete = false;
@@ -132,7 +133,7 @@
   }
 
   function schoolConfig() {
-    return CPU_SCHOOLS[schoolSelect.value] || CPU_SCHOOLS.normal;
+    return CPU_SCHOOLS[opponentSchoolKey] || CPU_SCHOOLS.normal;
   }
 
   function cpuConfig(side) {
@@ -153,7 +154,7 @@
 
   function activeCpuDifficultyKey(side) {
     const control = cpuControlState[side];
-    if (side === "red" && setupComplete && state.turn === "red" && Rules.isSideInCheck(state, "red") && control.remainingMs.expert > 0) {
+    if (setupComplete && state.turn === side && Rules.isSideInCheck(state, side) && control.remainingMs.expert > 0) {
       return "expert";
     }
     return control.difficultyKey;
@@ -181,8 +182,21 @@
     cpuStrategyCompleted.red = false;
   }
 
+  function chooseOpponentSchool() {
+    const selected = schoolSelect.value;
+    const keys = Object.keys(CPU_SCHOOLS);
+    opponentSchoolKey = selected === "random"
+      ? keys[Math.floor(Math.random() * keys.length)]
+      : selected;
+  }
+
   function cpuClockIsRunning(side) {
-    return setupComplete && (side === "red" || spectatorMode) && !Rules.isFinished(state) && !replayActive;
+    return setupComplete
+      && cpuBusy
+      && state.turn === side
+      && (side === "red" || spectatorMode)
+      && !Rules.isFinished(state)
+      && !replayActive;
   }
 
   function restartThinkingCpu(side) {
@@ -347,7 +361,7 @@
   function resetGameForDeck(newMap = false) {
     cpuRunVersion += 1;
     if (newMap) mapBoard = global.BukatsuBoard.createBoard();
-    state = Game.createGameState(schoolSelect.value, selectedPlayerLineup(), mapBoard);
+    state = Game.createGameState(opponentSchoolKey, selectedPlayerLineup(), mapBoard);
     cpuBusy = false;
     winnerSoundPlayedFor = null;
     clearAutoTimer();
@@ -356,6 +370,8 @@
   }
 
   function completeDeckSetup(startAsSpectator = false) {
+    resetCpuControls();
+    chooseOpponentSchool();
     chooseCpuStrategies();
     setupComplete = true;
     spectatorMode = startAsSpectator;
@@ -660,7 +676,7 @@ const clubEntries = Object.entries(CLUBS);
   }
 
   function renderSchoolOptions() {
-    schoolSelect.innerHTML = schoolOptionsHtml("normal", "対戦校");
+    schoolSelect.innerHTML = `<option value="random">ランダム</option>${schoolOptionsHtml("normal", "対戦校")}`;
     schoolSelect.value = "normal";
 
   }
@@ -800,7 +816,7 @@ const clubEntries = Object.entries(CLUBS);
     storageDraftName = "";
     resultDialogShownFor = null;
     mapBoard = global.BukatsuBoard.createBoard();
-    state = Game.createGameState(schoolSelect.value, selectedPlayerLineup(), mapBoard);
+    state = Game.createGameState(opponentSchoolKey, selectedPlayerLineup(), mapBoard);
     cpuBusy = false;
     spectatorMode = false;
     resetCpuControls();
@@ -816,7 +832,7 @@ const clubEntries = Object.entries(CLUBS);
     resultDialog.classList.remove("visible");
     if (replayTimerId) window.clearTimeout(replayTimerId);
     replayActive = true;
-    state = Game.createGameState(schoolSelect.value, selectedPlayerLineup(), mapBoard);
+    state = Game.createGameState(opponentSchoolKey, selectedPlayerLineup(), mapBoard);
     resultDialogShownFor = null;
     replayIndex = 0;
     cpuBusy = true;
@@ -1088,6 +1104,7 @@ const clubEntries = Object.entries(CLUBS);
   function runAutoTurn(side) {
     if (Rules.isFinished(state) || state.turn !== side) return;
     const runVersion = ++cpuRunVersion;
+    cpuControlState[side].clockUpdatedAt = performance.now();
     cpuBusy = true;
     render();
     clearAutoTimer();
@@ -1110,6 +1127,7 @@ const clubEntries = Object.entries(CLUBS);
         }
         return;
       }
+      if (runVersion === cpuRunVersion && state === thinkingState && state.turn === side) chargeCpuTime(side);
       if (runVersion !== cpuRunVersion || state !== thinkingState || Rules.isFinished(state) || state.turn !== side) return;
       if (move) {
         const piece = Rules.getPiece(state, move.pieceId);
@@ -1152,8 +1170,14 @@ const clubEntries = Object.entries(CLUBS);
   }
 
   schoolSelect.addEventListener("change", () => {
-    if (!setupComplete) return;
+    if (!setupComplete) {
+      opponentSchoolKey = schoolSelect.value === "random" ? "normal" : schoolSelect.value;
+      resetGameForDeck();
+      render();
+      return;
+    }
     resetCpuControls();
+    chooseOpponentSchool();
     chooseCpuStrategies();
     resetGameForDeck(true);
     render();

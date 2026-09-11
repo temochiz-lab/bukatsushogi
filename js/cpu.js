@@ -134,14 +134,28 @@
 
     score += Rules.generateLegalMoves(state, side).length * 6 * school.weights.mobility;
     score -= Rules.generateLegalMoves(state, enemy).length * 4 * school.weights.mobility;
+    const reserveCount = nonHomeReserveCount(state, side);
+    if (reserveCount >= 5) score -= reserveCount * 80;
     return score;
   }
 
+  function nonHomeReserveCount(state, side) {
+    return (state.captured[side] || []).filter((pieceId) => {
+      const piece = Rules.getPiece(state, pieceId);
+      return piece && piece.club !== "home" && piece.club !== "president";
+    }).length;
+  }
+
   function orderedMoves(state, side) {
+    const prioritizeDrops = nonHomeReserveCount(state, side) >= 5;
     return checkResponseMoves(state, side, Rules.generateLegalMoves(state, side)).sort((a, b) => {
       const av = a.captureId ? CLUBS[Rules.getPiece(state, a.captureId).club].value : 0;
       const bv = b.captureId ? CLUBS[Rules.getPiece(state, b.captureId).club].value : 0;
-      return bv - av;
+      const aPiece = Rules.getPiece(state, a.pieceId);
+      const bPiece = Rules.getPiece(state, b.pieceId);
+      const aDrop = prioritizeDrops && a.type === "drop" && aPiece && aPiece.club !== "home" ? 10000 : 0;
+      const bDrop = prioritizeDrops && b.type === "drop" && bPiece && bPiece.club !== "home" ? 10000 : 0;
+      return (bDrop + bv) - (aDrop + av);
     });
   }
 
@@ -166,6 +180,27 @@
     return president ? moves.find((move) => move.pieceId === president.id) || null : null;
   }
 
+  function isSafePresidentMove(state, side, move) {
+    const next = Rules.applyMove(state, move);
+    if (Rules.getWinner(next) === side) return true;
+    const president = findPresident(next, side);
+    if (!president) return false;
+    const enemy = side === "blue" ? "red" : "blue";
+    return !Rules.generateLegalMoves(next, enemy).some((reply) => reply.captureId === president.id);
+  }
+
+  function chooseExpertPresidentMove(state, side, proposedMove, moves, school) {
+    const piece = proposedMove ? Rules.getPiece(state, proposedMove.pieceId) : null;
+    if (!piece || piece.club !== "president") return proposedMove;
+    const presidentMoves = moves.filter((move) => move.pieceId === piece.id);
+    if (presidentMoves.length === 0) return proposedMove;
+    const safeMoves = presidentMoves.filter((move) => isSafePresidentMove(state, side, move));
+    if (safeMoves.length === 0) return presidentMoves[Math.floor(Math.random() * presidentMoves.length)];
+    return safeMoves
+      .map((move) => ({ move, score: evaluateBoard(Rules.applyMove(state, move), side, school) }))
+      .sort((a, b) => b.score - a.score)[0].move;
+  }
+
   function allOutChargeMoves(moves, side) {
     const forward = side === "blue" ? -1 : 1;
     const advancing = moves.filter((move) => move.from && Math.sign(move.to.row - move.from.row) === forward);
@@ -183,7 +218,10 @@
       if (target.club === "president") return 1000000;
       score += CLUBS[target.club].value * (move.convert ? 2 : 1);
     }
-    if (move.type === "drop" && piece) score += CLUBS[piece.club].value * 0.08;
+    if (move.type === "drop" && piece) {
+      score += CLUBS[piece.club].value * 0.08;
+      if (piece.club !== "home" && nonHomeReserveCount(state, side) >= 5) score += 10000;
+    }
     if (move.type === "move" && piece && piece.club !== "president" && !piece.promoted && move.to
       && ((side === "blue" && move.to.row <= 2) || (side === "red" && move.to.row >= 6))) {
       score += 80;
@@ -201,9 +239,9 @@
     const checked = Rules.isSideInCheck(state, side);
     const legalMoves = Rules.generateLegalMoves(state, side);
     const winningMove = immediateWinningMove(state, side, legalMoves);
-    if (winningMove) return winningMove;
+    if (winningMove) return chooseExpertPresidentMove(state, side, winningMove, legalMoves, school);
     const doomedMove = doomedPresidentMove(state, side, legalMoves);
-    if (doomedMove) return doomedMove;
+    if (doomedMove) return chooseExpertPresidentMove(state, side, doomedMove, legalMoves, school);
     let candidates = checkResponseMoves(state, side, legalMoves);
     if (school.allOutCharge && !checked) candidates = allOutChargeMoves(candidates, side);
     const moves = candidates
@@ -212,7 +250,7 @@
     if (moves.length === 0) return null;
     const windowSize = Math.min(moves.length, school.choiceWindow || 1);
     const index = Math.random() < school.blunderRate ? Math.floor(Math.random() * windowSize) : 0;
-    return moves[index].move;
+    return chooseExpertPresidentMove(state, side, moves[index].move, legalMoves, school);
   }
 
   function minimax(state, depth, alpha, beta, maximizing, side, school) {
@@ -311,13 +349,15 @@
     const moves = orderedMoves(state, side);
     if (moves.length === 0) return null;
     const winningMove = immediateWinningMove(state, side, moves);
-    if (winningMove) return winningMove;
+    if (winningMove) return chooseExpertPresidentMove(state, side, winningMove, moves, school);
     const doomedMove = doomedPresidentMove(state, side, moves);
-    if (doomedMove) return doomedMove;
+    if (doomedMove) return chooseExpertPresidentMove(state, side, doomedMove, moves, school);
     if (Math.random() < school.blunderRate) {
-      return moves[Math.floor(Math.random() * Math.min(moves.length, 8))];
+      const move = moves[Math.floor(Math.random() * Math.min(moves.length, 8))];
+      return chooseExpertPresidentMove(state, side, move, moves, school);
     }
-    return minimax(state, school.depth, -Infinity, Infinity, true, side, school).move;
+    const move = minimax(state, school.depth, -Infinity, Infinity, true, side, school).move;
+    return chooseExpertPresidentMove(state, side, move, moves, school);
   }
 
   async function chooseCpuMoveAsync(state, side, school) {
@@ -326,11 +366,12 @@
     const moves = orderedMoves(state, side);
     if (moves.length === 0) return null;
     const winningMove = immediateWinningMove(state, side, moves);
-    if (winningMove) return winningMove;
+    if (winningMove) return chooseExpertPresidentMove(state, side, winningMove, moves, school);
     const doomedMove = doomedPresidentMove(state, side, moves);
-    if (doomedMove) return doomedMove;
+    if (doomedMove) return chooseExpertPresidentMove(state, side, doomedMove, moves, school);
     if (Math.random() < school.blunderRate) {
-      return moves[Math.floor(Math.random() * Math.min(moves.length, 8))];
+      const move = moves[Math.floor(Math.random() * Math.min(moves.length, 8))];
+      return chooseExpertPresidentMove(state, side, move, moves, school);
     }
     const yieldToBrowser = createYieldController();
     let bestMove = moves[0];
@@ -344,8 +385,8 @@
       }
       if (performance.now() >= deadline) break;
     }
-    return bestMove;
+    return chooseExpertPresidentMove(state, side, bestMove, moves, school);
   }
 
-  global.BukatsuCpu = { evaluateBoard, minimax, chooseCpuMove, chooseCpuMoveAsync, chooseSimpleMove, strategyPositionScore, checkResponseMoves, allOutChargeMoves, immediateWinningMove, doomedPresidentMove, isStrategyComplete };
+  global.BukatsuCpu = { evaluateBoard, minimax, chooseCpuMove, chooseCpuMoveAsync, chooseSimpleMove, strategyPositionScore, checkResponseMoves, allOutChargeMoves, immediateWinningMove, doomedPresidentMove, isSafePresidentMove, chooseExpertPresidentMove, nonHomeReserveCount, isStrategyComplete };
 })(globalThis);
