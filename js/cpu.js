@@ -24,7 +24,7 @@
     return bonus ? 24 : 0;
   }
 
-  function strategyPositionScore(position, side, strategy, piece = null) {
+  function strategyPositionScore(position, side, strategy, piece = null, target = null) {
     if (!position || !strategy) return 0;
     const maxRow = BOARD_CONFIG.rows - 1;
     const maxCol = BOARD_CONFIG.cols - 1;
@@ -32,7 +32,11 @@
     const supportRow = side === "blue" ? maxRow - 1 : 1;
     const progress = side === "blue" ? maxRow - position.row : position.row;
     const club = piece ? piece.club : null;
-    if (strategy === "advance" || strategy === "charge") return progress * 12;
+    if (strategy === "charge") {
+      if (!target) return 0;
+      const chaseWeight = club === "president" ? 4 : 24;
+      return (BOARD_CONFIG.rows + BOARD_CONFIG.cols - distance(position, target)) * chaseWeight;
+    }
     if (strategy === "left") return (maxCol - position.col) * 8;
     if (strategy === "right") return position.col * 8;
     if (strategy === "yagura") {
@@ -121,14 +125,15 @@
       const sign = piece.team === side ? 1 : -1;
       score += sign * CLUBS[piece.club].value * school.weights.material;
       score += sign * terrainScore(state, piece) * school.weights.terrain;
-      if (piece.team === side) score += strategyPositionScore(piece, side, school.strategy, piece);
+      if (piece.team === side) score += strategyPositionScore(piece, side, school.strategy, piece, enemyPresident);
     }
 
     if (ownPresident && enemyPresident) {
       const ownDanger = Rules.generateLegalMoves(state, enemy).filter((move) => move.captureId === ownPresident.id).length;
       const enemyDanger = Rules.generateLegalMoves(state, side).filter((move) => move.captureId === enemyPresident.id).length;
       score -= ownDanger * 180 * school.weights.presidentSafety;
-      score += enemyDanger * 180 * school.weights.pressure;
+      const attackWeight = school.strategy === "charge" ? 4 : 1;
+      score += enemyDanger * 180 * school.weights.pressure * attackWeight;
       score += (18 - distance(ownPresident, enemyPresident)) * school.weights.pressure;
     }
 
@@ -201,10 +206,10 @@
       .sort((a, b) => b.score - a.score)[0].move;
   }
 
-  function allOutChargeMoves(moves, side) {
-    const forward = side === "blue" ? -1 : 1;
-    const advancing = moves.filter((move) => move.from && Math.sign(move.to.row - move.from.row) === forward);
-    return advancing.length > 0 ? advancing : moves;
+  function allOutChargeMoves(state, moves, side) {
+    const enemy = side === "blue" ? "red" : "blue";
+    const checkingMoves = moves.filter((move) => Rules.isSideInCheck(Rules.applyMove(state, move), enemy));
+    return checkingMoves.length > 0 ? checkingMoves : moves;
   }
 
   function simpleMoveScore(state, move, side, school) {
@@ -228,8 +233,8 @@
     }
     if (enemyPresident && move.to) score += (18 - distance(move.to, enemyPresident)) * 3;
     if ((move.type === "move" || move.type === "drop" || move.convert) && move.to) {
-      const destinationScore = strategyPositionScore(move.to, side, school.strategy, piece);
-      const originScore = move.type === "drop" ? 0 : strategyPositionScore(piece, side, school.strategy, piece);
+      const destinationScore = strategyPositionScore(move.to, side, school.strategy, piece, enemyPresident);
+      const originScore = move.type === "drop" ? 0 : strategyPositionScore(piece, side, school.strategy, piece, enemyPresident);
       score += destinationScore - originScore;
     }
     return score;
@@ -243,7 +248,7 @@
     const doomedMove = doomedPresidentMove(state, side, legalMoves);
     if (doomedMove) return chooseExpertPresidentMove(state, side, doomedMove, legalMoves, school);
     let candidates = checkResponseMoves(state, side, legalMoves);
-    if (school.allOutCharge && !checked) candidates = allOutChargeMoves(candidates, side);
+    if (school.allOutCharge && !checked) candidates = allOutChargeMoves(state, candidates, side);
     const moves = candidates
       .map((move) => ({ move, score: simpleMoveScore(state, move, side, school) }))
       .sort((a, b) => b.score - a.score);

@@ -86,7 +86,7 @@
     anaguma: "会長を自陣の角へ寄せて固める",
     left: "全軍を盤面左側へ寄せる",
     right: "全軍を盤面右側へ寄せる",
-    charge: "準備せず全軍で前進する"
+    charge: "準備せず敵の会長を積極的に狙う"
   };
   const cpuStrategies = { blue: playerStrategy, red: "yagura" };
   const cpuStrategyCompleted = { blue: false, red: false };
@@ -147,7 +147,7 @@
     return {
       ...difficulty,
       weights,
-      strategy: difficultyKey === "easy" || charging ? "advance" : cpuStrategies[side],
+      strategy: difficultyKey === "easy" || charging ? "charge" : cpuStrategies[side],
       allOutCharge: difficultyKey === "easy" || charging
     };
   }
