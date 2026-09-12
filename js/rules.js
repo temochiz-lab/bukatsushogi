@@ -82,8 +82,7 @@
     const club = CLUBS[piece.club];
     const terrain = terrainAt(state, piece.row, piece.col);
     const base = club.baseMove;
-    const promotedBonus = piece.promoted && piece.club !== "home" && piece.club !== "president" ? 1 : 0;
-    const normalLimit = base + promotedBonus + getBonus(piece, terrain, "move");
+    const normalLimit = base + getBonus(piece, terrain, "move");
     if (club.fieldTerrains && club.fieldTerrains.includes(terrain)) {
       return Math.min(base * 2, Math.max(normalLimit, base * 2));
     }
@@ -142,6 +141,23 @@
         const target = move.captureId ? getPiece(state, move.captureId) : null;
         return target && target.club !== "president" ? { ...move, type: "attack", convert: true } : move;
       });
+  }
+
+  function promotedStepMoves(state, piece) {
+    if (!piece.promoted || piece.club === "home" || piece.club === "president") return [];
+    if (piece.club === "broadcast" || piece.club === "newspaper") {
+      return conversionMoves(state, piece, DIRECTIONS, 1, false);
+    }
+    return stepMoves(state, piece, DIRECTIONS, 1, { canMove: true, canCapture: true, slide: false });
+  }
+
+  function uniqueMoves(moves) {
+    const unique = new Map();
+    for (const move of moves) {
+      const key = [move.type, move.to.row, move.to.col, move.captureId || "", move.convert ? 1 : 0].join(":");
+      if (!unique.has(key)) unique.set(key, move);
+    }
+    return [...unique.values()];
   }
 
   function hasLineOfSight(state, from, to) {
@@ -270,7 +286,8 @@
       moves = stepMoves(state, piece, [[forward, -1], [forward, 0], [forward, 1], [0, -1], [0, 1]], moveLimitFor(state, piece), { canMove: true, canCapture: true, slide: false });
     }
 
-    return moves.filter((move) => isPassable(state, piece, move.to.row, move.to.col) || move.type === "attack");
+    moves.push(...promotedStepMoves(state, piece));
+    return uniqueMoves(moves).filter((move) => isPassable(state, piece, move.to.row, move.to.col) || move.type === "attack");
   }
 
   function generateLegalMoves(state, side) {
@@ -414,6 +431,7 @@
     positionKey,
     isSideInCheck,
     moveLimitFor,
+    promotedStepMoves,
     rangeFor
   };
 })(globalThis);

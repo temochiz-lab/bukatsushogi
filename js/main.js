@@ -351,7 +351,7 @@
 
   function promotionText(key) {
     if (key === "president") return "";
-    return key === "home" ? "敵陣3段で成る" : "敵陣3段で成り移動+1";
+    return key === "home" ? "敵陣3段で成り金将の動き" : "敵陣3段で成り周囲8方向1マス追加";
   }
 
   function detailText(key, club) {
